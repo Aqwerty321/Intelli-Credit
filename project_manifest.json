@@ -1,0 +1,94 @@
+{
+  "project": "Intelli-Credit",
+  "version": "0.1.0",
+  "description": "Local, open-source, zero-trust corporate credit decisioning engine",
+  "host_constraints": {
+    "vram_gb": 24,
+    "ram_gb": 64,
+    "gpu": "NVIDIA RTX 5090 (Blackwell sm_100)",
+    "cuda_version": "13.1",
+    "driver_version": "591.86",
+    "os": "WSL2 Ubuntu 24.04"
+  },
+  "deliverables": [
+    "data_ingestor",
+    "research_agent",
+    "recommendation_engine"
+  ],
+  "acceptance": {
+    "extraction_accuracy_min": 0.90,
+    "research_min_corroborated_hits": 1,
+    "explainability_hard_reject_coverage": 1.00,
+    "explainability_risk_adjustment_coverage": 0.90,
+    "vram_headroom_required": true,
+    "mem_limit_enforcement": true
+  },
+  "components": {
+    "visual_ingestion": {
+      "model": "zai-org/GLM-OCR",
+      "params_b": 0.9,
+      "precision": "bfloat16",
+      "vram_estimate_gb": 3.0,
+      "fallback_chain": ["vLLM", "SGLang", "transformers", "Tesseract"]
+    },
+    "cognitive_core": {
+      "model": "DeepSeek-R1-Distill-Llama-8B",
+      "quantization": "Q4_K_M",
+      "format": "GGUF",
+      "vram_estimate_gb": 6.0,
+      "runtime": "llama.cpp",
+      "fallback_chain": ["Ollama", "llama-cpp-python"]
+    },
+    "data_substrate": {
+      "analytics": "DuckDB",
+      "vector_store": "LanceDB",
+      "table_format": "Apache Iceberg (optional)"
+    },
+    "entity_resolution": {
+      "primary": "Crocodile",
+      "fallback": "rapidfuzz"
+    },
+    "graph_fraud_detection": {
+      "framework": "FLAG",
+      "backend": "PyTorch Geometric / NetworkX",
+      "execution": "CPU (64GB RAM)"
+    },
+    "agent_orchestration": {
+      "framework": "autogen-agentchat (Microsoft Agent Framework)",
+      "web_extraction": "firecrawl-simple (self-hosted Docker)"
+    },
+    "neuro_symbolic": {
+      "inference": "PyReason (Python 3.10)",
+      "constraints": "IBM LNN",
+      "fallback": "Pure Python rule engine"
+    },
+    "cam_generation": {
+      "template_engine": "python-docx-template",
+      "format": "DOCX"
+    }
+  },
+  "tasks": [
+    {"id": 1, "name": "bootstrap", "priority": "P1", "phase": 1},
+    {"id": 2, "name": "pyenv_setup", "priority": "P1", "phase": 1},
+    {"id": 3, "name": "directory_scaffold", "priority": "P1", "phase": 1},
+    {"id": 4, "name": "synthetic_test_data", "priority": "P1", "phase": 1},
+    {"id": 5, "name": "pdf_preprocessing", "priority": "P1", "phase": 2},
+    {"id": 6, "name": "glm_ocr_inference", "priority": "P1", "phase": 2},
+    {"id": 7, "name": "structured_output_validation", "priority": "P1", "phase": 2},
+    {"id": 8, "name": "llama_cpp_build", "priority": "P1", "phase": 3},
+    {"id": 9, "name": "deepseek_profiling", "priority": "P1", "phase": 3},
+    {"id": 10, "name": "inference_api", "priority": "P1", "phase": 3},
+    {"id": 11, "name": "duckdb_lancedb_setup", "priority": "P1", "phase": 4},
+    {"id": 12, "name": "entity_resolution", "priority": "P1", "phase": 4},
+    {"id": 13, "name": "agent_framework", "priority": "P2", "phase": 5},
+    {"id": 14, "name": "firecrawl_deployment", "priority": "P2", "phase": 5},
+    {"id": 15, "name": "research_workflow", "priority": "P2", "phase": 5},
+    {"id": 16, "name": "transaction_graph", "priority": "P2", "phase": 6},
+    {"id": 17, "name": "flag_gnn", "priority": "P2", "phase": 6},
+    {"id": 18, "name": "pyreason_rules", "priority": "P2", "phase": 7},
+    {"id": 19, "name": "ibm_lnn", "priority": "P2", "phase": 7},
+    {"id": 20, "name": "cam_template", "priority": "P1", "phase": 8},
+    {"id": 21, "name": "e2e_pipeline", "priority": "P1", "phase": 8},
+    {"id": 22, "name": "acceptance_tests", "priority": "P1", "phase": 8}
+  ]
+}

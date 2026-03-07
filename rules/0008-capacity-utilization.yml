@@ -1,0 +1,47 @@
+# Rule 0008: Capacity Utilization
+# Flags companies with low factory/business capacity utilization
+---
+rule_id: "0008"
+slug: "capacity-utilization"
+version: "1.0"
+severity: "MEDIUM"
+category: "operational_risk"
+
+description: >
+  Evaluates factory/business capacity utilization from primary insights
+  (credit officer field visits) and secondary data. Capacity below 50%
+  indicates underperformance and repayment risk.
+
+condition:
+  type: "threshold_comparison"
+  field: "capacity_utilization_pct"
+  thresholds:
+    - level: "warning"
+      value: 60
+      severity: "LOW"
+    - level: "flag"
+      value: 50
+      severity: "MEDIUM"
+    - level: "hard_constraint"
+      value: 30
+      severity: "HIGH"
+
+action:
+  flag: "AMBER_FLAG"
+  risk_adjustment_below50: 0.10
+  risk_adjustment_below30: 0.25
+  cam_section: "capacity"
+  rationale_template: >
+    Factory/business capacity utilization at {utilization_pct}%, below the
+    {threshold_pct}% threshold. Source: {source_type} ({source_detail}).
+
+pyreason_predicate: |
+  low_capacity(Company) :- [threshold, 1.0]
+    capacity_utilization(Company, UtilPct),
+    UtilPct < 50
+
+tests:
+  - input: { capacity_utilization_pct: 40 }
+    expected: { flag: "AMBER_FLAG", severity: "MEDIUM" }
+  - input: { capacity_utilization_pct: 75 }
+    expected: { flag: null }

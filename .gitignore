@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Models (large files)
+models/*.gguf
+models/*.bin
+models/*.safetensors
+
+# Storage (runtime data)
+storage/
+logs/
+reports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.env
+
+# Test artifacts
+tests/extraction_smoke/*.pdf
+tests/extraction_smoke/*.txt
+tests/research_depth/
+
+# Compiled
+llama.cpp/
+*.o
+*.so

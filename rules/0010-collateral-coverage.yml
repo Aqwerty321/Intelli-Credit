@@ -1,0 +1,49 @@
+# Rule 0010: Collateral Coverage Ratio
+# Flags insufficient collateral relative to loan amount
+---
+rule_id: "0010"
+slug: "collateral-coverage"
+version: "1.0"
+severity: "HIGH"
+category: "collateral"
+
+description: >
+  Evaluates collateral coverage ratio (collateral value / loan amount).
+  Minimum acceptable ratio is typically 1.25x for secured lending.
+  Below 1.0x is a hard constraint (unsecured exposure).
+
+condition:
+  type: "ratio_comparison"
+  numerator: "collateral_value"
+  denominator: "loan_amount_requested"
+  thresholds:
+    - level: "hard_constraint"
+      ratio: 1.0
+      severity: "CRITICAL"
+    - level: "flag"
+      ratio: 1.25
+      severity: "HIGH"
+    - level: "warning"
+      ratio: 1.5
+      severity: "MEDIUM"
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment_below125: 0.15
+  risk_adjustment_below100: 0.30
+  cam_section: "collateral"
+  rationale_template: >
+    Collateral coverage ratio is {coverage_ratio}x (collateral value
+    ₹{collateral_value} vs requested loan ₹{loan_amount}). {assessment}.
+
+pyreason_predicate: |
+  insufficient_collateral(Company) :- [threshold, 1.0]
+    collateral_value(Company, CollValue),
+    loan_requested(Company, LoanAmt),
+    CollValue < LoanAmt * 1.25
+
+tests:
+  - input: { collateral_value: 8000000, loan_amount_requested: 10000000 }
+    expected: { flag: "RED_FLAG", coverage_ratio: 0.8 }
+  - input: { collateral_value: 15000000, loan_amount_requested: 10000000 }
+    expected: { flag: null }

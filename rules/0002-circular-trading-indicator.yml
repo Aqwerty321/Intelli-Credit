@@ -1,0 +1,45 @@
+# Rule 0002: Circular Trading Indicator
+# Flags entities participating in circular trading patterns via graph motifs
+---
+rule_id: "0002"
+slug: "circular-trading-indicator"
+version: "1.0"
+severity: "CRITICAL"
+category: "fraud_detection"
+
+description: >
+  Detects circular trading patterns where invoice chains loop back to the
+  originator, artificially inflating turnover. Triggered by FLAG GNN or
+  NetworkX motif detection identifying chain/cycle motifs.
+
+condition:
+  type: "graph_motif"
+  motif_types: ["cycle", "chain_loop", "star_seller"]
+  min_cycle_length: 3
+  max_cycle_length: 8
+  min_edge_weight: 500000  # INR 5 lakh minimum transaction value
+  temporal_window_days: 90
+
+action:
+  flag: "CRITICAL_FLAG"
+  risk_adjustment: 0.30  # Increase risk score by 30%
+  cam_section: "character"
+  hard_reject: true
+  rationale_template: >
+    Circular trading pattern detected: {cycle_description}. A {cycle_length}-hop
+    chain motif involving {entity_count} entities with aggregate transaction
+    value ₹{total_value} was identified within a {window_days}-day window.
+    This suggests deliberate turnover inflation.
+
+pyreason_predicate: |
+  circular_trading(Company) :- [threshold, 1.0]
+    graph_cycle(Company, CycleId, CycleLength),
+    CycleLength >= 3,
+    cycle_value(CycleId, TotalValue),
+    TotalValue >= 500000
+
+tests:
+  - input: { cycle_detected: true, cycle_length: 4, total_value: 10000000 }
+    expected: { flag: "CRITICAL_FLAG", hard_reject: true }
+  - input: { cycle_detected: false }
+    expected: { flag: null }

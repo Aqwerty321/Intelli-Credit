@@ -1,0 +1,55 @@
+# Rule 0007: Promoter Litigation Risk
+# Flags companies whose promoters have active litigation
+---
+rule_id: "0007"
+slug: "promoter-litigation"
+version: "1.0"
+severity: "HIGH"
+category: "promoter_risk"
+
+description: >
+  Evaluates active litigation against company promoters and directors.
+  Significant litigation (criminal cases, fraud charges, or high-value civil
+  suits) increases character risk. Sources: e-Courts, MCA filings, news.
+
+condition:
+  type: "count_and_severity"
+  field: "active_litigation_count"
+  thresholds:
+    - category: "criminal"
+      count: 1
+      severity: "CRITICAL"
+    - category: "civil_high_value"
+      count: 2
+      min_value: 10000000  # INR 1 crore
+      severity: "HIGH"
+    - category: "civil_any"
+      count: 5
+      severity: "MEDIUM"
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment_criminal: 0.35
+  risk_adjustment_civil_high: 0.20
+  risk_adjustment_civil_general: 0.10
+  cam_section: "character"
+  rationale_template: >
+    Promoter {promoter_name} has {litigation_count} active litigation cases:
+    {case_summary}. Criminal cases: {criminal_count}. High-value civil cases
+    (>₹1Cr): {high_value_count}.
+
+pyreason_predicate: |
+  promoter_litigation_risk(Company, critical) :- [threshold, 1.0]
+    promoter(Company, Promoter),
+    criminal_case(Promoter, CaseId),
+    case_status(CaseId, active)
+  promoter_litigation_risk(Company, high) :- [threshold, 1.0]
+    promoter(Company, Promoter),
+    civil_case_count(Promoter, active, Count),
+    Count >= 2
+
+tests:
+  - input: { criminal_cases: 1, civil_high_value: 0 }
+    expected: { flag: "RED_FLAG", severity: "CRITICAL" }
+  - input: { criminal_cases: 0, civil_high_value: 0, civil_any: 1 }
+    expected: { flag: null }

@@ -1,0 +1,43 @@
+# Rule 0006: Revenue Inflation Detection
+# Compares GST declared sales against bank statement cash flows
+---
+rule_id: "0006"
+slug: "revenue-inflation"
+version: "1.0"
+severity: "HIGH"
+category: "gst_reconciliation"
+
+description: >
+  Cross-checks declared sales in GSTR-1/3B against actual cash-flow velocity
+  from bank statements. Large mismatches (>20%) suggest revenue inflation,
+  circular trading, or undisclosed income.
+
+condition:
+  type: "threshold_comparison"
+  lhs: "gst_declared_turnover"
+  rhs: "bank_statement_credits"
+  operator: "deviation"
+  threshold_pct: 20.0
+  direction: "either"  # Flag both inflation and suppression
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment: 0.20
+  cam_section: "capacity"
+  escalate_to: "graph_analysis"  # Trigger FLAG GNN for circular trading check
+  rationale_template: >
+    GST declared turnover (₹{gst_turnover}) deviates from bank statement
+    credits (₹{bank_credits}) by {deviation_pct}%. {direction} detected —
+    {interpretation}.
+
+pyreason_predicate: |
+  revenue_inflation(Company, FY) :- [threshold, 1.0]
+    gst_turnover(Company, FY, GSTTurnover),
+    bank_credits(Company, FY, BankCredits),
+    abs(GSTTurnover - BankCredits) > BankCredits * 0.20
+
+tests:
+  - input: { gst_declared_turnover: 12000000, bank_statement_credits: 8000000 }
+    expected: { flag: "RED_FLAG", deviation_pct: 50.0 }
+  - input: { gst_declared_turnover: 10500000, bank_statement_credits: 10000000 }
+    expected: { flag: null }

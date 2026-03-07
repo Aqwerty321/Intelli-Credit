@@ -1,0 +1,42 @@
+# Rule 0001: GST ITC Mismatch
+# Detects discrepancy between Input Tax Credit claimed on GSTR-3B vs GSTR-2A
+---
+rule_id: "0001"
+slug: "gst-itc-mismatch"
+version: "1.0"
+severity: "HIGH"
+category: "gst_reconciliation"
+
+description: >
+  Cross-validates Input Tax Credit (ITC) claimed on GSTR-3B against
+  supplier-populated GSTR-2A. Significant excess ITC in 3B relative to 2A
+  indicates potential fraudulent ITC claims or circular trading.
+
+condition:
+  type: "threshold_comparison"
+  lhs: "gstr3b_itc_claimed"
+  rhs: "gstr2a_itc_available"
+  operator: ">"
+  threshold_pct: 10.0  # Flag if 3B exceeds 2A by more than 10%
+  absolute_threshold: 100000  # INR 1 lakh minimum to avoid noise
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment: 0.15  # Increase risk score by 15%
+  cam_section: "capacity"
+  rationale_template: >
+    GSTR-3B ITC claimed (₹{gstr3b_itc_claimed}) exceeds GSTR-2A available ITC
+    (₹{gstr2a_itc_available}) by {excess_pct}%, indicating potential fraudulent
+    ITC claims or supplier compliance issues.
+
+pyreason_predicate: |
+  itc_mismatch(Company, FiscalYear) :- [threshold, 1.0]
+    gstr3b_itc(Company, FiscalYear, ITC3B),
+    gstr2a_itc(Company, FiscalYear, ITC2A),
+    ITC3B > ITC2A * 1.10
+
+tests:
+  - input: { gstr3b_itc_claimed: 5000000, gstr2a_itc_available: 4000000 }
+    expected: { flag: "RED_FLAG", excess_pct: 25.0 }
+  - input: { gstr3b_itc_claimed: 4050000, gstr2a_itc_available: 4000000 }
+    expected: { flag: null }  # Below threshold

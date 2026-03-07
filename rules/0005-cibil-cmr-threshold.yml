@@ -1,0 +1,49 @@
+# Rule 0005: CIBIL CMR Threshold
+# Flags companies with poor CIBIL MSME Rank (CMR)
+---
+rule_id: "0005"
+slug: "cibil-cmr-threshold"
+version: "1.0"
+severity: "HIGH"
+category: "credit_history"
+
+description: >
+  Evaluates the CIBIL MSME Rank (CMR) from commercial credit reports.
+  CMR ranges 1-10 (1=lowest risk, 10=highest risk). CMR > 7 is a significant
+  risk indicator. CMR > 8 is a hard constraint for most lenders.
+
+condition:
+  type: "threshold_comparison"
+  field: "cibil_cmr_rank"
+  thresholds:
+    - level: "warning"
+      value: 6
+      severity: "MEDIUM"
+    - level: "flag"
+      value: 7
+      severity: "HIGH"
+    - level: "hard_constraint"
+      value: 9
+      severity: "CRITICAL"
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment_cmr7: 0.15
+  risk_adjustment_cmr8: 0.25
+  risk_adjustment_cmr9: 0.40
+  cam_section: "character"
+  rationale_template: >
+    CIBIL MSME Rank (CMR) is {cmr_rank}/10, indicating {risk_level} credit risk.
+    Credit Profile Summary shows {credit_profile_summary}.
+
+pyreason_predicate: |
+  cmr_risk(Company, critical) :- [threshold, 1.0]
+    cibil_cmr(Company, CMR), CMR >= 9
+  cmr_risk(Company, high) :- [threshold, 1.0]
+    cibil_cmr(Company, CMR), CMR >= 7, CMR < 9
+
+tests:
+  - input: { cibil_cmr_rank: 8 }
+    expected: { flag: "RED_FLAG", severity: "HIGH" }
+  - input: { cibil_cmr_rank: 4 }
+    expected: { flag: null }

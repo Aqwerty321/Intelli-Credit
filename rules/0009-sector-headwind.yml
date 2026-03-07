@@ -1,0 +1,43 @@
+# Rule 0009: Sector Headwind Detection
+# Flags negative sector trends from research agent findings
+---
+rule_id: "0009"
+slug: "sector-headwind"
+version: "1.0"
+severity: "MEDIUM"
+category: "conditions"
+
+description: >
+  Evaluates sector-specific headwinds detected by research agents:
+  new adverse regulations, industry downturns, commodity price shocks,
+  or geopolitical risks affecting the borrower's sector.
+
+condition:
+  type: "sentiment_and_count"
+  field: "sector_sentiment_score"
+  sentiment_threshold: -0.3  # Negative sentiment score
+  min_evidence_count: 2  # At least 2 corroborating sources
+  temporal_window_days: 180
+
+action:
+  flag: "AMBER_FLAG"
+  risk_adjustment: 0.10
+  cam_section: "conditions"
+  rationale_template: >
+    Sector headwinds detected for {sector_name}: {headwind_summary}.
+    Based on {evidence_count} corroborating sources. Sentiment score:
+    {sentiment_score}. Key factors: {key_factors}.
+
+pyreason_predicate: |
+  sector_headwind(Company) :- [threshold, 1.0]
+    operates_in_sector(Company, Sector),
+    sector_sentiment(Sector, SentimentScore),
+    SentimentScore < -0.3,
+    sector_evidence_count(Sector, EvidenceCount),
+    EvidenceCount >= 2
+
+tests:
+  - input: { sector_sentiment_score: -0.5, evidence_count: 3 }
+    expected: { flag: "AMBER_FLAG" }
+  - input: { sector_sentiment_score: 0.2, evidence_count: 5 }
+    expected: { flag: null }

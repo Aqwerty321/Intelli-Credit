@@ -1,0 +1,39 @@
+# Rule 0004: Dishonoured Cheques
+# Flags borrowers with excessive dishonoured/bounced cheques
+---
+rule_id: "0004"
+slug: "dishonoured-cheques"
+version: "1.0"
+severity: "HIGH"
+category: "credit_history"
+
+description: >
+  Counts dishonoured (bounced) cheques from bank statements and CIBIL reports.
+  More than 3 dishonoured cheques in a 12-month period indicates poor financial
+  discipline and potential cash flow issues.
+
+condition:
+  type: "count_threshold"
+  field: "dishonoured_cheque_count_12m"
+  threshold: 3
+  period_months: 12
+
+action:
+  flag: "RED_FLAG"
+  risk_adjustment: 0.20
+  cam_section: "character"
+  rationale_template: >
+    {dishonoured_count} dishonoured cheques detected in the last 12 months,
+    with a total value of ₹{total_dishonoured_value}. This exceeds the
+    threshold of 3 and indicates poor financial discipline.
+
+pyreason_predicate: |
+  dishonoured_risk(Company) :- [threshold, 1.0]
+    dishonoured_cheque_count(Company, Period12M, Count),
+    Count > 3
+
+tests:
+  - input: { dishonoured_cheque_count_12m: 5, total_value: 2500000 }
+    expected: { flag: "RED_FLAG", risk_adjustment: 0.20 }
+  - input: { dishonoured_cheque_count_12m: 2 }
+    expected: { flag: null }

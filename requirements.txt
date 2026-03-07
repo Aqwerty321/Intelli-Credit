@@ -1,0 +1,7 @@
+charset-normalizer==3.4.5
+duckdb==1.4.4
+networkx==3.6.1
+pillow==12.1.1
+PyYAML==6.0.3
+RapidFuzz==3.14.3
+reportlab==4.4.10
