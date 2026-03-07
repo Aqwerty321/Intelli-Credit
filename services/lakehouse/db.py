@@ -27,121 +27,106 @@ def init_schema(conn: Optional[duckdb.DuckDBPyConnection] = None) -> None:
     if conn is None:
         conn = get_connection()
 
-    conn.execute("""
-    -- Documents table: raw document metadata
-    CREATE TABLE IF NOT EXISTS documents (
-        document_id VARCHAR PRIMARY KEY,
-        source_file VARCHAR NOT NULL,
-        document_type VARCHAR,
-        company_name VARCHAR,
-        upload_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        page_count INTEGER,
-        file_size_bytes BIGINT,
-        processing_status VARCHAR DEFAULT 'pending',
-        metadata JSON
-    );
-
-    -- Extracted fields: individual field extractions with provenance
-    CREATE TABLE IF NOT EXISTS extracted_fields (
-        id INTEGER PRIMARY KEY DEFAULT(nextval('extracted_fields_seq')),
-        document_id VARCHAR REFERENCES documents(document_id),
-        field_name VARCHAR NOT NULL,
-        field_value VARCHAR,
-        field_type VARCHAR,
-        page_number INTEGER,
-        confidence DOUBLE,
-        extraction_method VARCHAR,
-        agent_id VARCHAR,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        provenance JSON
-    );
-
-    -- Entities: resolved entities (companies, people, GSTINs)
-    CREATE TABLE IF NOT EXISTS entities (
-        entity_id VARCHAR PRIMARY KEY,
-        entity_type VARCHAR NOT NULL,  -- company, person, gstin, pan
-        canonical_name VARCHAR NOT NULL,
-        aliases JSON,  -- list of alternate names
-        attributes JSON,  -- key-value pairs
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Transactions: financial transactions for graph construction
-    CREATE TABLE IF NOT EXISTS transactions (
-        transaction_id VARCHAR PRIMARY KEY,
-        source_entity_id VARCHAR,
-        target_entity_id VARCHAR,
-        amount DOUBLE,
-        currency VARCHAR DEFAULT 'INR',
-        transaction_date DATE,
-        transaction_type VARCHAR,
-        document_id VARCHAR,
-        provenance JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Risk scores: per-entity risk assessments
-    CREATE TABLE IF NOT EXISTS risk_scores (
-        id INTEGER PRIMARY KEY DEFAULT(nextval('risk_scores_seq')),
-        entity_id VARCHAR,
-        rule_id VARCHAR,
-        rule_slug VARCHAR,
-        risk_score DOUBLE,
-        severity VARCHAR,
-        flag_type VARCHAR,
-        rationale TEXT,
-        trace JSON,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Research findings: external research results
-    CREATE TABLE IF NOT EXISTS research_findings (
-        id INTEGER PRIMARY KEY DEFAULT(nextval('research_findings_seq')),
-        entity_id VARCHAR,
-        source_url VARCHAR,
-        source_type VARCHAR,
-        summary TEXT,
-        sentiment_score DOUBLE,
-        is_corroborated BOOLEAN DEFAULT FALSE,
-        corroboration_sources JSON,
-        provenance JSON,
-        crawl_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Provenance log: append-only audit trail
-    CREATE TABLE IF NOT EXISTS provenance_log (
-        id INTEGER PRIMARY KEY DEFAULT(nextval('provenance_log_seq')),
-        action VARCHAR NOT NULL,
-        entity_type VARCHAR,
-        entity_id VARCHAR,
-        agent_id VARCHAR,
-        details JSON,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- CAM outputs: generated Credit Appraisal Memos
-    CREATE TABLE IF NOT EXISTS cam_outputs (
-        cam_id VARCHAR PRIMARY KEY,
-        entity_id VARCHAR,
-        company_name VARCHAR,
-        recommendation VARCHAR,  -- APPROVE, REJECT, CONDITIONAL
-        loan_amount_recommended DOUBLE,
-        risk_premium_bps INTEGER,
-        five_cs JSON,
-        rules_fired JSON,
-        trace JSON,
-        docx_path VARCHAR,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-
-    # Create sequences if they don't exist
+    # Create sequences first (referenced by table defaults)
     for seq in ['extracted_fields_seq', 'risk_scores_seq', 'research_findings_seq', 'provenance_log_seq']:
-        try:
-            conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq} START 1")
-        except Exception:
-            pass
+        conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq} START 1")
+
+    stmts = [
+        """CREATE TABLE IF NOT EXISTS documents (
+            document_id VARCHAR PRIMARY KEY,
+            source_file VARCHAR NOT NULL,
+            document_type VARCHAR,
+            company_name VARCHAR,
+            upload_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            page_count INTEGER,
+            file_size_bytes BIGINT,
+            processing_status VARCHAR DEFAULT 'pending',
+            metadata JSON
+        )""",
+        """CREATE TABLE IF NOT EXISTS extracted_fields (
+            id INTEGER PRIMARY KEY DEFAULT(nextval('extracted_fields_seq')),
+            document_id VARCHAR,
+            field_name VARCHAR NOT NULL,
+            field_value VARCHAR,
+            field_type VARCHAR,
+            page_number INTEGER,
+            confidence DOUBLE,
+            extraction_method VARCHAR,
+            agent_id VARCHAR,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            provenance JSON
+        )""",
+        """CREATE TABLE IF NOT EXISTS entities (
+            entity_id VARCHAR PRIMARY KEY,
+            entity_type VARCHAR NOT NULL,
+            canonical_name VARCHAR NOT NULL,
+            aliases JSON,
+            attributes JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS transactions (
+            transaction_id VARCHAR PRIMARY KEY,
+            source_entity_id VARCHAR,
+            target_entity_id VARCHAR,
+            amount DOUBLE,
+            currency VARCHAR DEFAULT 'INR',
+            transaction_date DATE,
+            transaction_type VARCHAR,
+            document_id VARCHAR,
+            provenance JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS risk_scores (
+            id INTEGER PRIMARY KEY DEFAULT(nextval('risk_scores_seq')),
+            entity_id VARCHAR,
+            rule_id VARCHAR,
+            rule_slug VARCHAR,
+            risk_score DOUBLE,
+            severity VARCHAR,
+            flag_type VARCHAR,
+            rationale TEXT,
+            trace JSON,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS research_findings (
+            id INTEGER PRIMARY KEY DEFAULT(nextval('research_findings_seq')),
+            entity_id VARCHAR,
+            source_url VARCHAR,
+            source_type VARCHAR,
+            summary TEXT,
+            sentiment_score DOUBLE,
+            is_corroborated BOOLEAN DEFAULT FALSE,
+            corroboration_sources JSON,
+            provenance JSON,
+            crawl_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS provenance_log (
+            id INTEGER PRIMARY KEY DEFAULT(nextval('provenance_log_seq')),
+            action VARCHAR NOT NULL,
+            entity_type VARCHAR,
+            entity_id VARCHAR,
+            agent_id VARCHAR,
+            details JSON,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS cam_outputs (
+            cam_id VARCHAR PRIMARY KEY,
+            entity_id VARCHAR,
+            company_name VARCHAR,
+            recommendation VARCHAR,
+            loan_amount_recommended DOUBLE,
+            risk_premium_bps INTEGER,
+            five_cs JSON,
+            rules_fired JSON,
+            trace JSON,
+            docx_path VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+    ]
+
+    for stmt in stmts:
+        conn.execute(stmt)
 
     conn.commit()
 
