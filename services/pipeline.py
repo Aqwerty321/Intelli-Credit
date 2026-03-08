@@ -30,6 +30,20 @@ def run_pipeline(
     from services.reasoning.rule_engine import RuleEngine
     from services.cam.generator import CAMData, FiveCs, generate_cam_text
 
+    # Try to import cognitive engine (optional - pipeline works without LLM)
+    try:
+        from services.cognitive.engine import CognitiveEngine, DEEPSEEK_MODEL
+        cognitive_available = True
+    except ImportError:
+        cognitive_available = False
+
+    # Try to import OCR module (optional - for PDF processing)
+    try:
+        from services.ingestor.glm_ocr import ocr_document
+        ocr_available = True
+    except ImportError:
+        ocr_available = False
+
     if output_dir is None:
         output_dir = str(PROJECT_ROOT / "storage" / "processed" / "cam_outputs")
     os.makedirs(output_dir, exist_ok=True)
@@ -57,7 +71,11 @@ def run_pipeline(
         print(f"  Processing: {file_path}")
 
         # Read file content
-        if file_path.endswith('.json'):
+        if file_path.endswith('.pdf') and ocr_available:
+            ocr_result = ocr_document(file_path)
+            text = ocr_result["text"]
+            print(f"    OCR: {ocr_result['method']}, {ocr_result['page_count']} pages, {len(text)} chars")
+        elif file_path.endswith('.json'):
             with open(file_path) as f:
                 data = json.load(f)
             text = json.dumps(data, indent=2)
@@ -165,6 +183,35 @@ def run_pipeline(
         print(f"    [{rf.severity}] {rf.rule_slug}: {rf.rationale[:80]}...")
 
     # ========================================================================
+    # Phase 4b: LLM-Augmented Risk Assessment (optional)
+    # ========================================================================
+    llm_assessment = None
+    llm_trace = {}
+    if cognitive_available:
+        print("\n--- Phase 4b: LLM Risk Assessment ---")
+        try:
+            engine = CognitiveEngine()
+            if engine.is_alive():
+                resp = engine.assess_risk(facts)
+                llm_assessment = resp
+                llm_trace = {
+                    "model": resp.model,
+                    "thinking": resp.thinking[:2000] if resp.thinking else "",
+                    "answer": resp.answer[:2000] if resp.answer else resp.raw_text[:2000],
+                    "tokens_used": resp.tokens_used,
+                    "latency_ms": resp.latency_ms,
+                }
+                print(f"  LLM responded ({resp.latency_ms:.0f}ms, {resp.tokens_used} tokens)")
+                if resp.thinking:
+                    print(f"  Thinking: {resp.thinking[:200]}...")
+            else:
+                print("  Ollama not available — skipping LLM assessment")
+        except Exception as e:
+            print(f"  LLM assessment failed: {e}")
+    else:
+        print("\n--- Phase 4b: LLM Risk Assessment (skipped — not available) ---")
+
+    # ========================================================================
     # Phase 5: Decision & CAM Generation
     # ========================================================================
     print("\n--- Phase 5: CAM Generation ---")
@@ -238,9 +285,11 @@ def run_pipeline(
         } for rf in rule_firings],
         rules_fired=[rf.to_dict() for rf in rule_firings],
         research_findings=[],
-        neuro_symbolic_trace=[rf.to_dict() for rf in rule_firings],
+        neuro_symbolic_trace=[rf.to_dict() for rf in rule_firings] + ([llm_trace] if llm_trace else []),
         provenance_references=[],
-        primary_insights=primary_insights or [],
+        primary_insights=(primary_insights or []) + (
+            [f"LLM Assessment: {llm_assessment.answer[:500]}"] if llm_assessment and llm_assessment.answer else []
+        ),
     )
 
     # Generate CAM
@@ -277,6 +326,7 @@ def run_pipeline(
             }
             for a in fraud_alerts
         ],
+        "llm_trace": llm_trace if llm_trace else None,
         "timestamp": timestamp,
     }
     with open(trace_path, "w") as f:

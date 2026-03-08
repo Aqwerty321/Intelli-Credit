@@ -1,39 +1,141 @@
 """
 GLM-OCR inference service for Intelli-Credit.
-Converts preprocessed document images to structured Markdown with provenance.
+Converts document PDFs/images to structured Markdown with provenance.
 
 Usage:
   python glm_ocr.py --input-dir <dir_with_images> --output-dir <output> --source-file <original.pdf>
 
-Backend priority: vLLM -> SGLang -> transformers direct -> Tesseract fallback
+Backend priority: PyMuPDF text extraction -> Ollama vision -> Tesseract fallback
 """
 import argparse
+import base64
+import io
 import json
 import os
 import sys
 import glob
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://172.23.112.1:11434")
+GLM_OCR_MODEL = os.environ.get("GLM_OCR_MODEL", "glm-ocr:bf16")
+
+OCR_PROMPT = (
+    "Convert this document page to structured Markdown. "
+    "Preserve all text, tables, numbers, dates, and identifiers exactly. "
+    "Use proper Markdown formatting for headings, tables, and lists."
+)
+
+
+def ocr_document(pdf_path: str, output_dir: str = None) -> dict:
+    """
+    High-level OCR function: extract text from a PDF file.
+    Uses PyMuPDF for text-based PDFs, falls back to Ollama vision for scanned PDFs.
+
+    Returns dict with keys: text, pages, method, markdown
+    """
+    import fitz  # PyMuPDF
+
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    doc = fitz.open(pdf_path)
+    page_texts = []
+    method = "pymupdf"
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text("text").strip()
+
+        if len(text) > 20:
+            # Text-based PDF - PyMuPDF extraction works
+            page_texts.append(text)
+        else:
+            # Scanned/image PDF - try vision OCR
+            method = "ollama-vision"
+            pix = page.get_pixmap(dpi=200)
+            img_bytes = pix.tobytes("png")
+            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+            ocr_text = _ollama_vision_ocr(img_b64)
+            if ocr_text and len(ocr_text) > 10:
+                page_texts.append(ocr_text)
+            else:
+                # Fallback to tesseract
+                method = "tesseract"
+                import subprocess
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp.write(img_bytes)
+                    tmp_path = tmp.name
+                try:
+                    result = subprocess.run(
+                        ["tesseract", tmp_path, "stdout", "-l", "eng"],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    page_texts.append(result.stdout.strip() or "[No text detected]")
+                except Exception:
+                    page_texts.append("[OCR unavailable]")
+                finally:
+                    os.unlink(tmp_path)
+
+    doc.close()
+
+    all_text = "\n\n".join(page_texts)
+    markdown = build_markdown_document(page_texts, pdf_path, method)
+
+    if output_dir:
+        stem = Path(pdf_path).stem
+        md_path = os.path.join(output_dir, f"{stem}.md")
+        with open(md_path, "w") as f:
+            f.write(markdown)
+
+    return {
+        "text": all_text,
+        "pages": page_texts,
+        "method": method,
+        "page_count": len(page_texts),
+        "markdown": markdown,
+    }
+
+
+def _ollama_vision_ocr(img_b64: str, model: str = GLM_OCR_MODEL) -> str:
+    """Send an image to Ollama vision model for OCR."""
+    try:
+        payload = json.dumps({
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": OCR_PROMPT,
+                "images": [img_b64],
+            }],
+            "stream": False,
+            "options": {"num_predict": 4096},
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            f"{OLLAMA_BASE}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+            return data.get("message", {}).get("content", "")
+    except Exception:
+        return ""
+
 
 def get_inference_backend():
     """Detect available inference backend, trying in order of preference."""
-    # Try 1: vLLM (fastest, batched)
-    try:
-        from vllm import LLM
-        return "vllm"
-    except ImportError:
-        pass
+    # Try 1: Ollama with vision model
+    if _ollama_is_alive() and _ollama_has_model(GLM_OCR_MODEL):
+        return "ollama"
 
-    # Try 2: SGLang
-    try:
-        import sglang
-        return "sglang"
-    except ImportError:
-        pass
-
-    # Try 3: transformers direct (reliable but slower)
+    # Try 2: transformers direct (reliable but slower)
     try:
         from transformers import AutoModelForCausalLM, AutoTokenizer
         return "transformers"
@@ -46,6 +148,60 @@ def get_inference_backend():
         return "tesseract"
 
     return None
+
+
+def _ollama_is_alive() -> bool:
+    """Check if Ollama server is reachable."""
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def _ollama_has_model(model: str) -> bool:
+    """Check if the specified model is available in Ollama."""
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return any(m.get("name", "").startswith(model.split(":")[0]) for m in data.get("models", []))
+    except Exception:
+        return False
+
+
+def infer_with_ollama(image_paths: list[str], model: str = GLM_OCR_MODEL) -> list[str]:
+    """Run OCR inference using Ollama's vision API."""
+    results = []
+    for img_path in image_paths:
+        try:
+            with open(img_path, "rb") as f:
+                img_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+            payload = json.dumps({
+                "model": model,
+                "prompt": OCR_PROMPT,
+                "images": [img_b64],
+                "stream": False,
+                "options": {"num_predict": 4096},
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                f"{OLLAMA_BASE}/api/generate",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read())
+                text = data.get("response", "")
+                results.append(text if text else "[No text extracted]")
+        except Exception as e:
+            print(f"  Ollama OCR error for {img_path}: {e}", file=sys.stderr)
+            results.append(f"[ERROR: Ollama OCR failed for {os.path.basename(img_path)}: {e}]")
+
+    return results
 
 
 def infer_with_transformers(image_paths: list[str], model_name: str = "zai-org/GLM-OCR") -> list[str]:
@@ -175,7 +331,7 @@ def main():
     parser.add_argument("--output-dir", required=True, help="Output directory for Markdown + provenance")
     parser.add_argument("--source-file", required=True, help="Original PDF file path (for provenance)")
     parser.add_argument("--model", default="zai-org/GLM-OCR", help="Model name or path")
-    parser.add_argument("--backend", default="auto", choices=["auto", "vllm", "sglang", "transformers", "tesseract"])
+    parser.add_argument("--backend", default="auto", choices=["auto", "ollama", "transformers", "tesseract"])
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -212,15 +368,15 @@ def main():
     print(f"Using backend: {backend}")
 
     # Run inference
-    if backend == "transformers":
+    if backend == "ollama":
+        page_texts = infer_with_ollama(image_paths, args.model if args.model != "zai-org/GLM-OCR" else GLM_OCR_MODEL)
+    elif backend == "transformers":
         page_texts = infer_with_transformers(image_paths, args.model)
     elif backend == "tesseract":
         page_texts = infer_with_tesseract(image_paths)
     else:
-        # vLLM and SGLang would use their server APIs
-        # For now, fall back to transformers
-        print(f"Backend '{backend}' integration pending. Using transformers.", file=sys.stderr)
-        page_texts = infer_with_transformers(image_paths, args.model)
+        print(f"Backend '{backend}' not supported. Using tesseract.", file=sys.stderr)
+        page_texts = infer_with_tesseract(image_paths)
 
     # Build output Markdown
     markdown = build_markdown_document(page_texts, args.source_file, f"glm-ocr-{backend}")

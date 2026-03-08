@@ -1,6 +1,6 @@
 """
 Cognitive inference service for Intelli-Credit.
-Wraps llama.cpp server (DeepSeek-R1-Distill-Llama-8B Q4_K_M)
+Uses Ollama (primary) with DeepSeek-R1-8B-Llama-Distill-Abliterated-Q8_0
 for structured reasoning with <think>...</think> chain-of-thought.
 """
 import json
@@ -15,9 +15,13 @@ from dataclasses import dataclass, field
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-MODEL_DIR = PROJECT_ROOT / "models"
-DEFAULT_MODEL = MODEL_DIR / "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf"
-LLAMA_SERVER = PROJECT_ROOT / "llama.cpp" / "build" / "bin" / "llama-server"
+
+# Ollama model names
+DEEPSEEK_MODEL = "sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest"
+GLM_OCR_MODEL = "glm-ocr:bf16"
+
+# Ollama API base (auto-detect: env var > Windows host from WSL2 > localhost)
+OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://172.23.112.1:11434")
 
 
 @dataclass
@@ -26,7 +30,7 @@ class CognitiveResponse:
     raw_text: str
     thinking: str = ""
     answer: str = ""
-    model: str = "deepseek-r1-distill-llama-8b-q4"
+    model: str = DEEPSEEK_MODEL
     tokens_used: int = 0
     latency_ms: float = 0.0
 
@@ -55,117 +59,74 @@ def parse_thinking(raw_text: str) -> tuple[str, str]:
             thinking = parts[1].strip()
             answer = ""
     elif "think>" in raw_text.lower():
-        # Handle edge cases with malformed tags
         answer = raw_text
 
     return thinking, answer
 
 
 class CognitiveEngine:
-    """Interface to the llama.cpp server for structured reasoning."""
+    """Interface to Ollama for structured reasoning."""
 
-    def __init__(self, base_url: str = "http://127.0.0.1:8080"):
+    def __init__(self, base_url: str = OLLAMA_BASE,
+                 model: str = DEEPSEEK_MODEL):
         self.base_url = base_url.rstrip("/")
-        self._server_process = None
+        self.model = model
 
     def is_alive(self) -> bool:
-        """Check if the llama.cpp server is running."""
+        """Check if Ollama is running."""
         try:
-            req = urllib.request.Request(f"{self.base_url}/health")
+            req = urllib.request.Request(f"{self.base_url}/api/tags")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status == 200
+        except (urllib.error.URLError, OSError):
+            return False
+
+    def list_models(self) -> list[str]:
+        """List available Ollama models."""
+        try:
+            req = urllib.request.Request(f"{self.base_url}/api/tags")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
-                return data.get("status") == "ok"
+                return [m["name"] for m in data.get("models", [])]
         except (urllib.error.URLError, OSError, json.JSONDecodeError):
-            return False
+            return []
 
-    def start_server(self, model_path: str = None, ctx_size: int = 8192,
-                     gpu_layers: int = 33, port: int = 8080) -> bool:
-        """Start the llama.cpp server if not already running."""
-        if self.is_alive():
-            print("  llama.cpp server already running")
-            return True
-
-        model_path = model_path or str(DEFAULT_MODEL)
-        server_bin = str(LLAMA_SERVER)
-
-        if not os.path.exists(server_bin):
-            # Try alternative locations
-            alt_paths = [
-                PROJECT_ROOT / "llama.cpp" / "llama-server",
-                PROJECT_ROOT / "llama.cpp" / "server",
-            ]
-            for alt in alt_paths:
-                if alt.exists():
-                    server_bin = str(alt)
-                    break
-            else:
-                print("  ERROR: llama-server binary not found")
-                return False
-
-        if not os.path.exists(model_path):
-            print(f"  ERROR: Model not found: {model_path}")
-            return False
-
-        cmd = [
-            server_bin,
-            "-m", model_path,
-            "-c", str(ctx_size),
-            "-ngl", str(gpu_layers),
-            "--port", str(port),
-            "--host", "127.0.0.1",
-        ]
-
-        print(f"  Starting llama.cpp server: {' '.join(cmd[:4])}...")
-        self._server_process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-
-        # Wait for server to be ready
-        for i in range(30):
-            time.sleep(2)
-            if self.is_alive():
-                print(f"  Server ready (took {(i+1)*2}s)")
-                return True
-
-        print("  Server failed to start within 60s")
-        return False
-
-    def stop_server(self):
-        """Stop the llama.cpp server."""
-        if self._server_process:
-            self._server_process.terminate()
-            self._server_process.wait(timeout=10)
-            self._server_process = None
-
-    def complete(self, prompt: str, max_tokens: int = 4096,
-                 temperature: float = 0.1) -> CognitiveResponse:
-        """Send a completion request to the server."""
+    def generate(self, prompt: str, system: str = "",
+                 max_tokens: int = 4096,
+                 temperature: float = 0.1,
+                 model: str = None) -> CognitiveResponse:
+        """Send a generate request to Ollama."""
         t0 = time.time()
+        use_model = model or self.model
 
         payload = json.dumps({
+            "model": use_model,
             "prompt": prompt,
-            "n_predict": max_tokens,
-            "temperature": temperature,
-            "stop": ["<|endoftext|>", "<|end|>"],
+            "system": system,
             "stream": False,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+            },
         }).encode()
 
         req = urllib.request.Request(
-            f"{self.base_url}/completion",
+            f"{self.base_url}/api/generate",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 data = json.loads(resp.read())
         except (urllib.error.URLError, OSError) as e:
             return CognitiveResponse(
-                raw_text=f"[ERROR: Server unavailable: {e}]",
+                raw_text=f"[ERROR: Ollama unavailable: {e}]",
+                model=use_model,
             )
 
-        raw_text = data.get("content", "")
+        raw_text = data.get("response", "")
         thinking, answer = parse_thinking(raw_text)
         latency = (time.time() - t0) * 1000
 
@@ -173,14 +134,60 @@ class CognitiveEngine:
             raw_text=raw_text,
             thinking=thinking,
             answer=answer,
-            tokens_used=data.get("tokens_predicted", 0),
+            model=use_model,
+            tokens_used=data.get("eval_count", 0),
+            latency_ms=latency,
+        )
+
+    def chat(self, messages: list[dict], max_tokens: int = 4096,
+             temperature: float = 0.1,
+             model: str = None) -> CognitiveResponse:
+        """Send a chat request to Ollama."""
+        t0 = time.time()
+        use_model = model or self.model
+
+        payload = json.dumps({
+            "model": use_model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+            },
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                data = json.loads(resp.read())
+        except (urllib.error.URLError, OSError) as e:
+            return CognitiveResponse(
+                raw_text=f"[ERROR: Ollama unavailable: {e}]",
+                model=use_model,
+            )
+
+        raw_text = data.get("message", {}).get("content", "")
+        thinking, answer = parse_thinking(raw_text)
+        latency = (time.time() - t0) * 1000
+
+        return CognitiveResponse(
+            raw_text=raw_text,
+            thinking=thinking,
+            answer=answer,
+            model=use_model,
+            tokens_used=data.get("eval_count", 0),
             latency_ms=latency,
         )
 
     def analyze_document(self, document_text: str, context: str = "") -> CognitiveResponse:
         """Analyze a document for credit decisioning."""
-        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a senior credit analyst at an Indian MSME lending institution.
+        system = """You are a senior credit analyst at an Indian MSME lending institution.
 Analyze the provided document and extract:
 1. Key financial indicators (revenue, profit, debt ratios)
 2. Risk signals (DPD, delinquencies, litigation)
@@ -188,46 +195,67 @@ Analyze the provided document and extract:
 4. Promoter background concerns
 5. Overall credit quality assessment
 
-Use <think>...</think> tags to show your reasoning before providing conclusions.
-Always cite specific numbers and page references.
-{context}
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-Analyze this document for credit appraisal:
+Always cite specific numbers and references from the document."""
 
-{document_text[:12000]}
-<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
-        return self.complete(prompt)
+        if context:
+            system += f"\n\nAdditional context:\n{context}"
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Analyze this document for credit appraisal:\n\n{document_text[:12000]}"},
+        ]
+        return self.chat(messages)
 
     def assess_risk(self, facts: dict) -> CognitiveResponse:
         """Get a structured risk assessment from the LLM."""
         facts_str = json.dumps(facts, indent=2)
-        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a risk assessment engine for Indian MSME lending.
+
+        system = """You are a risk assessment engine for Indian MSME lending.
 Given the extracted facts, provide:
 1. Risk classification (LOW / MEDIUM / HIGH / CRITICAL)
 2. Key risk factors with severity
-3. Recommended loan terms (approve/reject/conditional, risk premium)
+3. Recommended loan terms (approve/reject/conditional, risk premium in bps)
 4. Missing information that would improve the assessment
 
-Use <think>...</think> for your reasoning chain.
-Output a JSON object after your thinking.
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-Facts extracted from the borrower's documents:
+Output a JSON object with your assessment."""
 
-{facts_str}
-<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
-        return self.complete(prompt)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Facts extracted from the borrower's documents:\n\n{facts_str}"},
+        ]
+        return self.chat(messages)
+
+    def extract_fields(self, document_text: str) -> CognitiveResponse:
+        """Extract structured fields from document text using LLM."""
+        system = """You are a document extraction engine for Indian corporate documents.
+Extract ALL of the following fields from the text. Return a JSON object:
+{
+  "gstin": ["list of GSTINs found"],
+  "pan": ["list of PANs found"],
+  "company_name": "company name",
+  "cin": "Company Identification Number if found",
+  "amounts": [{"label": "description", "value": numeric_value}],
+  "dates": [{"label": "description", "value": "DD/MM/YYYY"}],
+  "key_financials": {"revenue": null, "profit": null, "debt": null},
+  "risk_indicators": {"dpd": null, "cmr_rank": null, "dishonoured_cheques": null}
+}
+Only include fields you find. Use null for missing fields."""
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Extract structured fields from this document:\n\n{document_text[:8000]}"},
+        ]
+        return self.chat(messages)
 
 
 # Singleton engine
 _engine: Optional[CognitiveEngine] = None
 
 
-def get_engine(base_url: str = "http://127.0.0.1:8080") -> CognitiveEngine:
+def get_engine(base_url: str = OLLAMA_BASE,
+               model: str = DEEPSEEK_MODEL) -> CognitiveEngine:
     """Get the singleton CognitiveEngine instance."""
     global _engine
     if _engine is None:
-        _engine = CognitiveEngine(base_url)
+        _engine = CognitiveEngine(base_url, model)
     return _engine

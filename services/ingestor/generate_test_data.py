@@ -13,11 +13,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def random_gstin() -> str:
-    """Generate a valid-format GSTIN."""
+    """Generate a valid-format GSTIN (15 chars)."""
     state_code = f"{random.randint(1, 37):02d}"
     pan = random_pan()
-    entity_code = random.choice(string.digits + string.ascii_uppercase)
-    return f"{state_code}{pan}Z{entity_code}"
+    entity_number = random.choice(string.digits + string.ascii_uppercase)
+    check_digit = random.choice(string.digits + string.ascii_uppercase)
+    return f"{state_code}{pan}{entity_number}Z{check_digit}"
 
 
 def random_pan() -> str:
