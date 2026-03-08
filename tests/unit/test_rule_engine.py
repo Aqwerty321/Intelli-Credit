@@ -200,7 +200,7 @@ class TestSchemaV2:
         firings = rule_engine.evaluate({"max_dpd_last_12m": 120})
         for f in firings:
             d = f.to_dict()
-            assert d["schema_version"] == "v2", f"Rule {f.rule_slug} missing schema_version v2"
+            assert d["schema_version"] == "v2", f"Rule {f.rule_slug} missing schema_version v2"  # rule_firing dicts keep v2
 
     def test_missing_data_flags_field_present(self, rule_engine):
         firings = rule_engine.evaluate({"max_dpd_last_12m": 120})

@@ -55,7 +55,7 @@ def trace_from_pipeline():
 class TestTraceEnvelopeKeys:
     def test_schema_version_present(self, trace_from_pipeline):
         assert "schema_version" in trace_from_pipeline
-        assert trace_from_pipeline["schema_version"] == "v2"
+        assert trace_from_pipeline["schema_version"] == "v3"
 
     def test_rule_firings_key_is_list(self, trace_from_pipeline):
         """Key must be rule_firings (not rules_fired) to match frontend contract."""
@@ -111,7 +111,7 @@ class TestRuleFiringSchema:
         if not firings:
             pytest.skip("No rules fired in this test run")
         for rf in firings:
-            assert rf.get("schema_version") == "v2"
+            assert rf.get("schema_version") == "v2"  # rule firings keep v2 schema internally
 
     def test_firing_has_missing_data_flags(self, trace_from_pipeline):
         firings = trace_from_pipeline["rule_firings"]

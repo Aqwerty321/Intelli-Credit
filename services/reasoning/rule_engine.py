@@ -231,16 +231,35 @@ class RuleEngine:
             # direction="above": fire if val >= threshold.value; pick highest threshold crossed
             # direction="below": fire if val <= threshold.value; pick lowest threshold crossed
             best = None
-            for t in thresholds:
-                tval = float(t.get("value", float("inf") if direction == "above" else float("-inf")))
-                if direction == "above":
-                    if val >= tval:
-                        if best is None or tval > float(best.get("value", 0)):
-                            best = t
+            if direction == "either":
+                # Outer-bounds semantics: fire if val >= max_threshold (upper breach)
+                # OR val <= min_threshold (lower breach).  A value inside the
+                # accepted range [min_thresh, max_thresh] stays silent.
+                sorted_t = sorted(thresholds, key=lambda t: float(t.get("value", 0)))
+                upper = sorted_t[-1]  # highest value → upper-outlier trigger
+                lower = sorted_t[0]   # lowest value  → lower-outlier trigger
+                upper_fires = val >= float(upper.get("value", float("inf")))
+                lower_fires = val <= float(lower.get("value", float("-inf")))
+                if upper_fires and lower_fires:
+                    # Degenerate: single threshold (upper == lower); pick it
+                    best = upper
+                elif upper_fires:
+                    best = upper
+                elif lower_fires:
+                    best = lower
                 else:
-                    if val <= tval:
-                        if best is None or tval < float(best.get("value", float("inf"))):
-                            best = t
+                    best = None
+            else:
+                for t in thresholds:
+                    tval = float(t.get("value", float("inf") if direction == "above" else float("-inf")))
+                    if direction == "above":
+                        if val >= tval:
+                            if best is None or tval > float(best.get("value", 0)):
+                                best = t
+                    else:
+                        if val <= tval:
+                            if best is None or tval < float(best.get("value", float("inf"))):
+                                best = t
 
             if best:
                 risk_adj = float(best.get("risk_adjustment", 0.0))

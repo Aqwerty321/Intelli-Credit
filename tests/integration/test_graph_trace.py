@@ -104,6 +104,6 @@ class TestGraphTraceWithCycle:
         # Risk score must be in hard-reject territory
         assert trace["decision"]["risk_score"] >= 0.7, f"Risk score {trace['decision']['risk_score']} too low for REJECT"
         # Trace must have schema_version
-        assert trace["schema_version"] == "v2"
+        assert trace["schema_version"] == "v3"
         # rules_fired_count must match
         assert trace["rules_fired_count"] == len(trace["rule_firings"])

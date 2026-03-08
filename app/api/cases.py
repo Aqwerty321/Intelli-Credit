@@ -187,3 +187,58 @@ def delete_case(case_id: str):
     if not case_dir.exists():
         raise HTTPException(404, f"Case {case_id} not found")
     shutil.rmtree(case_dir)
+
+
+# ---------------------------------------------------------------------------
+# Officer Notes
+# ---------------------------------------------------------------------------
+
+class OfficerNote(BaseModel):
+    author: str
+    text: str
+    note_type: str = "general"   # "general" | "risk" | "approval" | "escalation"
+
+
+class OfficerNoteRecord(BaseModel):
+    note_id: str
+    author: str
+    text: str
+    note_type: str
+    created_at: str
+
+
+@router.post("/{case_id}/notes", status_code=201, response_model=OfficerNoteRecord)
+def add_officer_note(case_id: str, note: OfficerNote):
+    """Add a credit-officer note to a case."""
+    meta = _load_meta(case_id)
+    notes_path = _case_dir(case_id) / "notes.json"
+
+    notes: list[dict] = []
+    if notes_path.exists():
+        with open(notes_path) as f:
+            notes = json.load(f)
+
+    import uuid as _uuid
+    record = OfficerNoteRecord(
+        note_id=f"note_{_uuid.uuid4().hex[:8]}",
+        author=note.author,
+        text=note.text,
+        note_type=note.note_type,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    notes.append(record.model_dump())
+    with open(notes_path, "w") as f:
+        json.dump(notes, f, indent=2)
+
+    return record
+
+
+@router.get("/{case_id}/notes", response_model=list[OfficerNoteRecord])
+def get_officer_notes(case_id: str):
+    """Retrieve all officer notes for a case."""
+    _load_meta(case_id)   # validates case exists
+    notes_path = _case_dir(case_id) / "notes.json"
+    if not notes_path.exists():
+        return []
+    with open(notes_path) as f:
+        return json.load(f)

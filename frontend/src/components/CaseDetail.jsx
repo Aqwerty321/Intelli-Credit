@@ -144,6 +144,10 @@ export default function CaseDetail() {
     esRef.current = es
     es.addEventListener('progress', e => setLog(l => [...l, JSON.parse(e.data)]))
     es.addEventListener('research_complete', e => setLog(l => [...l, { phase: 'research_complete', ...JSON.parse(e.data) }]))
+    es.addEventListener('research_plan_ready', e => setLog(l => [...l, { phase: 'research_plan_ready', ...JSON.parse(e.data) }]))
+    es.addEventListener('evidence_scored', e => setLog(l => [...l, { phase: 'evidence_scored', ...JSON.parse(e.data) }]))
+    es.addEventListener('claim_graph_ready', e => setLog(l => [...l, { phase: 'claim_graph_ready', ...JSON.parse(e.data) }]))
+    es.addEventListener('counterfactual_ready', e => setLog(l => [...l, { phase: 'counterfactual_ready', ...JSON.parse(e.data) }]))
     es.addEventListener('warning', e => setLog(l => [...l, { phase: 'warning', ...JSON.parse(e.data) }]))
     es.addEventListener('complete', e => {
       setLog(l => [...l, { phase: 'DONE', ...JSON.parse(e.data) }])
@@ -169,8 +173,14 @@ export default function CaseDetail() {
   const graphTrace = trace.graph_trace || null
   const research = caseData.research || {}
   const findings = research.findings || []
+  // v3 extensions
+  const isV3 = trace.schema_version === 'v3'
+  const evidenceJudge = trace.evidence_judge || null
+  const claimGraph = trace.claim_graph || null
+  const counterfactuals = trace.counterfactuals || null
+  const searchPlan = trace.research_plan || null
 
-  const tabs = ['documents', 'run', 'evidence', 'trace', 'cam']
+  const tabs = ['documents', 'run', 'evidence', 'trace', 'cam', ...(hasRun && isV3 ? ['judge'] : [])]
   const hasRun = !!decision.recommendation
 
   return (
@@ -431,6 +441,102 @@ export default function CaseDetail() {
             </div>
           ) : (
             <p className="text-gray-400 text-sm">Run the appraisal to generate the CAM.</p>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Judge (v3 only) */}
+      {tab === 'judge' && isV3 && (
+        <div className="space-y-5">
+          {/* Evidence Quality Metrics */}
+          {evidenceJudge && (
+            <div className="bg-white rounded border px-4 py-4">
+              <h3 className="font-medium text-sm text-gray-700 mb-3">Evidence Quality</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[['Accepted', evidenceJudge.accepted, 'text-green-600'],
+                  ['Rejected', evidenceJudge.rejected, 'text-red-500'],
+                  ['Precision@10', evidenceJudge.precision_at_10 != null ? (evidenceJudge.precision_at_10 * 100).toFixed(0) + '%' : '—', 'text-indigo-600'],
+                  ['Corroboration', evidenceJudge.corroboration_rate != null ? (evidenceJudge.corroboration_rate * 100).toFixed(0) + '%' : '—', 'text-blue-600'],
+                ].map(([label, val, color]) => (
+                  <div key={label} className="text-center">
+                    <p className={`text-2xl font-bold ${color}`}>{val ?? '—'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+              {evidenceJudge.fallback && <p className="text-xs text-amber-600 mt-2">⚠ Scored by heuristics (LLM model unavailable)</p>}
+            </div>
+          )}
+
+          {/* Claim Graph */}
+          {claimGraph && (
+            <div className="bg-white rounded border px-4 py-4">
+              <h3 className="font-medium text-sm text-gray-700 mb-1">Claim Graph</h3>
+              <div className="flex gap-4 text-xs text-gray-500 mb-3">
+                <span>Total: <strong>{claimGraph.claims_total}</strong></span>
+                <span className="text-green-600">Corroborated: <strong>{claimGraph.corroborated}</strong></span>
+                {claimGraph.contradictions > 0 && <span className="text-red-600">⚡ Contradictions: <strong>{claimGraph.contradictions}</strong></span>}
+              </div>
+              {claimGraph.claims?.length > 0 ? (
+                <div className="space-y-1.5">
+                  {claimGraph.claims.map(c => (
+                    <div key={c.claim_id} className="flex items-start gap-2 text-sm py-1.5 border-b border-gray-100 last:border-0">
+                      <span className={`mt-0.5 text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                        c.status === 'corroborated' ? 'bg-green-100 text-green-700' :
+                        c.status === 'contradicted' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-500'}`}>{c.status}</span>
+                      <span className="text-gray-700 text-xs flex-1">{c.text}</span>
+                      <span className="text-xs text-gray-400 shrink-0">conf {c.confidence?.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-gray-400 text-sm">No claims extracted.</p>}
+            </div>
+          )}
+
+          {/* Counterfactuals */}
+          {counterfactuals?.scenarios?.length > 0 && (
+            <div className="bg-white rounded border px-4 py-4">
+              <h3 className="font-medium text-sm text-gray-700 mb-3">Counterfactual Scenarios</h3>
+              <div className="space-y-2">
+                {counterfactuals.scenarios.map(s => (
+                  <div key={s.scenario_id} className="border rounded p-3 text-sm">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="font-medium text-gray-800">{s.description}</span>
+                      <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded ${
+                        s.hypothetical_recommendation === 'APPROVE' ? 'bg-green-100 text-green-700' :
+                        s.hypothetical_recommendation === 'REJECT' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'}`}>
+                        → {s.hypothetical_recommendation}
+                      </span>
+                    </div>
+                    {s.rationale && <p className="text-xs text-gray-500 mt-1">{s.rationale}</p>}
+                    <p className="text-xs text-gray-400 mt-1">Risk delta: {s.delta_risk_score > 0 ? '+' : ''}{(s.delta_risk_score * 100).toFixed(0)}%</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Search Plan */}
+          {searchPlan && (
+            <details className="bg-white rounded border px-4 py-3">
+              <summary className="font-medium text-sm text-gray-700 cursor-pointer select-none">
+                Research Plan ({searchPlan.query_count ?? searchPlan.queries?.length ?? 0} queries)
+                {searchPlan.fallback && <span className="ml-2 text-xs text-amber-600">[deterministic fallback]</span>}
+              </summary>
+              <div className="mt-2 space-y-1">
+                {searchPlan.queries?.map((q, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs py-1">
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded font-medium ${
+                      q.priority === 1 ? 'bg-red-100 text-red-600' :
+                      q.priority === 2 ? 'bg-yellow-100 text-yellow-600' :
+                      'bg-gray-100 text-gray-500'}`}>{q.focus_area}</span>
+                    <span className="text-gray-700">{q.query}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}

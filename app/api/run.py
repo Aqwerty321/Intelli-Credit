@@ -106,8 +106,39 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
             "recommendation": decision.get("recommendation"),
             "risk_score": decision.get("risk_score"),
             "rules_fired_count": len(trace.get("rule_firings", [])),
-            "schema_version": trace.get("schema_version", "v2"),
+            "schema_version": trace.get("schema_version", "v3"),
         })
+
+        # v3 supplemental events (emitted after complete so UI can update panels)
+        if trace.get("schema_version") == "v3":
+            if trace.get("research_plan"):
+                rp = trace["research_plan"]
+                emit("research_plan_ready", {
+                    "queries": len(rp.get("queries", [])),
+                    "focus_areas": rp.get("focus_areas", []),
+                    "fallback": rp.get("fallback", True),
+                })
+            if trace.get("evidence_judge"):
+                ej = trace["evidence_judge"]
+                emit("evidence_scored", {
+                    "accepted": ej.get("accepted", 0),
+                    "rejected": ej.get("rejected", 0),
+                    "precision_at_10": ej.get("precision_at_10"),
+                    "corroboration_rate": ej.get("corroboration_rate"),
+                })
+            if trace.get("claim_graph"):
+                cg = trace["claim_graph"]
+                emit("claim_graph_ready", {
+                    "claims": cg.get("claims_total", 0),
+                    "corroborated": cg.get("corroborated", 0),
+                    "contradictions": cg.get("contradictions", 0),
+                })
+            if trace.get("counterfactuals"):
+                cf = trace["counterfactuals"]
+                emit("counterfactual_ready", {
+                    "scenarios": cf.get("scenario_count", 0),
+                    "top_scenario": cf.get("top_scenario"),
+                })
 
     except Exception as e:
         import traceback
@@ -117,7 +148,7 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
 async def _sse_generator(queue: asyncio.Queue) -> AsyncGenerator[dict, None]:
     """Yield SSE events from the queue until the pipeline completes."""
     while True:
-        item = await asyncio.wait_for(queue.get(), timeout=120.0)
+        item = await asyncio.wait_for(queue.get(), timeout=300.0)
         yield item
         if item["event"] in ("complete", "error"):
             break

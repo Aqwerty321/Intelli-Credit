@@ -25,6 +25,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 SEARXNG_BASE = os.environ.get("SEARXNG_URL", "http://localhost:8888")
 
+# Cache version — bump to invalidate all old research caches
+CACHE_VERSION = "3"
+
 # ---------------------------------------------------------------------------
 # Domain quality tiers: higher tier → higher base confidence
 # ---------------------------------------------------------------------------
@@ -181,6 +184,36 @@ class ResearchAgent:
             return "general"
         else:
             return "low"
+
+    # Minimum domain confidence required for a negative finding to be included:
+    # "low" tier negative findings are silently dropped to reduce noise.
+    _TIER_FLOOR_FOR_NEGATIVE = 0.50
+
+    # Noise patterns: if snippet/title contains these, treat as dictionary/wiki/forum noise
+    _NOISE_PATTERNS: list[str] = [
+        "definition of", "what is ", "meaning of", "how to ", "tutorial",
+        "recipe", "cooking", "shopping", "buy now", "add to cart",
+        "forum", "reddit.com", "quora.com", "answers.yahoo",
+        "wikipedia.org/wiki/",
+    ]
+
+    def _is_noise(self, search_result: dict) -> bool:
+        """Return True if the result looks like dictionary/wiki/forum content."""
+        combined = (search_result.get("title", "") + " " + search_result.get("snippet", "")).lower()
+        url = search_result.get("url", "").lower()
+        if any(blocked in url for blocked in DOMAIN_BLOCKLIST):
+            return True
+        return any(p in combined or p in url for p in self._NOISE_PATTERNS)
+
+    def _is_stale(self, snippet: str, category: str) -> bool:
+        """Return True if regulatory/litigation signal appears to predate 2021."""
+        if category not in ("regulatory", "litigation", "fraud"):
+            return False
+        # Look for a 4-digit year in the snippet; if earliest year < 2021 and no recent year, flag stale
+        years = [int(y) for y in re.findall(r'\b(20(?:1[0-9]|2[0-9]))\b', snippet)]
+        if years and max(years) < 2021:
+            return True
+        return False
 
     def _entity_matches(self, company: dict, text: str) -> bool:
         """
@@ -342,13 +375,17 @@ class ResearchAgent:
         cache_dir = PROJECT_ROOT / "storage" / "cache" / "research"
         cache_dir.mkdir(parents=True, exist_ok=True)
         safe_name = re.sub(r'[^\w]', '_', company_name.lower())[:60]
-        cache_file = cache_dir / f"{safe_name}_research.json"
+        cache_file = cache_dir / f"{safe_name}_v{CACHE_VERSION}_research.json"
         if use_cache and cache_file.exists():
             try:
                 with open(cache_file) as f:
                     cached = json.load(f)
-                print(f"  [Research] Cache hit: {cache_file.name} ({len(cached.get('findings', []))} findings)")
-                return cached
+                # Reject caches from older versions
+                if cached.get("cache_version") == CACHE_VERSION:
+                    print(f"  [Research] Cache hit: {cache_file.name} ({len(cached.get('findings', []))} findings)")
+                    return cached
+                else:
+                    print(f"  [Research] Cache version mismatch — refreshing ({cache_file.name})")
             except Exception:
                 pass  # Cache corrupt, proceed with fresh research
 
@@ -378,8 +415,21 @@ class ResearchAgent:
         # Step 3: Analyze each result for credit relevance
         findings = []
         for r in all_results:
+            # Pre-filter noise (dictionary / forum / shopping pages)
+            if self._is_noise(r):
+                continue
             finding = self.analyze_finding(company, r, known_facts)
             if finding:
+                # Drop "low" tier negative findings (B-list sources making unverified claims)
+                tier = finding.get("source_tier", "low")
+                impact = finding.get("risk_impact", "neutral")
+                domain_conf = finding.get("confidence", 0.0)
+                if impact == "negative" and domain_conf < self._TIER_FLOOR_FOR_NEGATIVE:
+                    continue
+                # Flag stale regulatory/litigation signals
+                if self._is_stale(finding.get("raw_snippet", ""), finding.get("category", "")):
+                    finding["stale"] = True
+                    finding["risk_impact"] = "stale_" + impact
                 findings.append(finding)
 
         # Step 4: Deduplicate and rank findings
@@ -412,10 +462,12 @@ class ResearchAgent:
 
         result = {
             "company": company_name,
+            "cache_version": CACHE_VERSION,
             "queries_executed": len(queries),
             "web_results_found": len(all_results),
             "findings": unique_findings,
             "corroborated_findings": sum(1 for f in unique_findings if not f.get("insufficient_corroboration")),
+            "stale_findings_dropped": sum(1 for f in unique_findings if f.get("stale")),
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }
