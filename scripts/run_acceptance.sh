@@ -13,6 +13,11 @@ export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)" 2>/dev/null || true
 
+# Also try activating venv
+if [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+  source "$PROJECT_ROOT/.venv/bin/activate"
+fi
+
 log() { echo "[$(date -Iseconds)] $*"; }
 
 log "=== Acceptance Test Suite START ==="
@@ -24,10 +29,10 @@ RESULTS='[]'
 run_test() {
   local TEST_NAME="$1"
   local TEST_SCRIPT="$2"
-  local REPORT_FILE="$REPORT_DIR/${TEST_NAME}.json"
+  local REPORT_FILE="$REPORT_DIR/${TEST_NAME}_result.json"
 
   log "--- Running: $TEST_NAME ---"
-  if PYENV_VERSION=py312-glmocr pyenv exec python "$TEST_SCRIPT" > "$REPORT_FILE" 2>&1; then
+  if python "$TEST_SCRIPT" > "$REPORT_FILE" 2>&1; then
     log "  PASS: $TEST_NAME"
     PASS_COUNT=$((PASS_COUNT + 1))
   else

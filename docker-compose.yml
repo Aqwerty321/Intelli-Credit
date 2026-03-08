@@ -64,6 +64,24 @@ services:
       - MONGO_INITDB_DATABASE=intelli_credit
     restart: unless-stopped
 
+  ##############################################################################
+  # SearXNG — Self-hosted meta-search engine for research agent
+  ##############################################################################
+  searxng:
+    image: searxng/searxng:latest
+    container_name: intelli-searxng
+    ports:
+      - "8888:8080"
+    mem_limit: 1g
+    cpus: 1.0
+    volumes:
+      - ./config/searxng:/etc/searxng:rw
+      - searxng_data:/var/log/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    restart: unless-stopped
+
 volumes:
   redis_data:
   mongo_data:
+  searxng_data:

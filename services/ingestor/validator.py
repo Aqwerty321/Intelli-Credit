@@ -99,6 +99,71 @@ def extract_all_fields(text: str) -> dict[str, list[str]]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Domain-specific extractors (CIBIL, GST ITC)
+# ---------------------------------------------------------------------------
+
+def extract_cibil_facts(text: str) -> dict:
+    """Extract CIBIL-specific fields: CMR rank, max DPD, dishonoured cheques."""
+    facts = {}
+
+    # CMR Score: X/10
+    m = re.search(r'CMR\s*(?:Score|Rank)\s*[:\s]*(\d{1,2})\s*/\s*10', text, re.IGNORECASE)
+    if m:
+        facts["cibil_cmr_rank"] = int(m.group(1))
+
+    # Max DPD (Last 12 Months): NN days
+    m = re.search(r'Max\s*DPD\s*\([^)]*\)\s*[:\s]*(\d+)\s*days?', text, re.IGNORECASE)
+    if m:
+        facts["max_dpd_last_12m"] = int(m.group(1))
+
+    # Dishonoured Cheques: N
+    m = re.search(r'Dishonoured\s*Cheques?\s*[:\s]*(\d+)', text, re.IGNORECASE)
+    if m:
+        facts["dishonoured_cheque_count_12m"] = int(m.group(1))
+
+    # Risk Category
+    m = re.search(r'Risk\s*Category\s*[:\s]*(Low|Medium|High|Very\s*High|Critical)\s*Risk', text, re.IGNORECASE)
+    if m:
+        facts["risk_category"] = m.group(1).strip()
+
+    return facts
+
+
+def extract_gst_itc_facts(text: str) -> dict:
+    """Extract GST ITC fields: GSTR-2A available, GSTR-3B claimed."""
+    facts = {}
+
+    # ITC Available (GSTR-2A): Rs. X,XX,XXX
+    m = re.search(r'ITC\s*Available\s*\(GSTR-2A\)\s*[:\s]*(?:Rs\.?|₹|INR)\s*([\d,]+)', text, re.IGNORECASE)
+    if m:
+        facts["gstr2a_itc_available"] = int(m.group(1).replace(',', ''))
+
+    # ITC Claimed (GSTR-3B): Rs. X,XX,XXX
+    m = re.search(r'ITC\s*Claimed\s*\(GSTR-3B\)\s*[:\s]*(?:Rs\.?|₹|INR)\s*([\d,]+)', text, re.IGNORECASE)
+    if m:
+        facts["gstr3b_itc_claimed"] = int(m.group(1).replace(',', ''))
+
+    # Taxable value / Total Tax Payable
+    m = re.search(r'Taxable\s*Value\s*[:\s]*(?:Rs\.?|₹|INR)\s*([\d,]+)', text, re.IGNORECASE)
+    if m:
+        facts["taxable_value"] = int(m.group(1).replace(',', ''))
+
+    m = re.search(r'Total\s*Tax\s*Payable\s*[:\s]*(?:Rs\.?|₹|INR)\s*([\d,]+)', text, re.IGNORECASE)
+    if m:
+        facts["total_tax_payable"] = int(m.group(1).replace(',', ''))
+
+    return facts
+
+
+def extract_domain_facts(text: str) -> dict:
+    """Extract all domain-specific facts from document text."""
+    facts = {}
+    facts.update(extract_cibil_facts(text))
+    facts.update(extract_gst_itc_facts(text))
+    return facts
+
+
 def compute_confidence(field_type: str, value: str, context: Optional[str] = None) -> float:
     """Compute extraction confidence score for a field."""
     base_confidence = 0.5

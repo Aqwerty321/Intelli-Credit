@@ -23,7 +23,7 @@ def run_pipeline(
 ):
     """Run the complete credit appraisal pipeline."""
     from services.ingestor.provenance import Provenance, create_provenance
-    from services.ingestor.validator import extract_all_fields
+    from services.ingestor.validator import extract_all_fields, extract_domain_facts
     from services.lakehouse.db import get_connection, init_schema, insert_document, insert_extracted_field, log_provenance
     from services.entity_resolution.resolver import EntityResolver
     from services.graph.builder import TransactionGraphBuilder
@@ -39,7 +39,7 @@ def run_pipeline(
 
     # Try to import OCR module (optional - for PDF processing)
     try:
-        from services.ingestor.glm_ocr import ocr_document
+        from services.ingestor.glm_ocr import ocr_document, preload_ocr_model, unload_ocr_model
         ocr_available = True
     except ImportError:
         ocr_available = False
@@ -65,6 +65,7 @@ def run_pipeline(
 
     all_extracted_fields = {}
     all_text = ""
+    domain_facts = {}
 
     for file_path in input_files:
         doc_id = Path(file_path).stem
@@ -93,6 +94,12 @@ def run_pipeline(
             if field_type not in all_extracted_fields:
                 all_extracted_fields[field_type] = []
             all_extracted_fields[field_type].extend(values)
+
+        # Extract domain-specific facts (CIBIL, GST ITC)
+        doc_domain_facts = extract_domain_facts(text)
+        if doc_domain_facts:
+            domain_facts.update(doc_domain_facts)
+            print(f"    Domain facts: {list(doc_domain_facts.keys())}")
 
         # Store in lakehouse
         try:
@@ -155,17 +162,25 @@ def run_pipeline(
         "loan_amount_requested": loan_amount,
     }
 
-    # Add CIBIL facts if available (from ground truth or extracted)
-    # These would come from real document extraction
-    facts.update({
+    # Merge real domain facts extracted from documents (CIBIL, GST ITC)
+    # Provide conservative defaults for facts not found in documents
+    defaults = {
         "max_dpd_last_12m": 0,
         "dishonoured_cheque_count_12m": 0,
         "cibil_cmr_rank": 5,
         "capacity_utilization_pct": 70,
-        "collateral_value": loan_amount * 1.5,  # Default assumption
+        "collateral_value": loan_amount * 1.5,
         "sector_sentiment_score": 0.1,
         "evidence_count": 0,
-    })
+    }
+    for k, v in defaults.items():
+        if k not in domain_facts:
+            facts[k] = v
+    facts.update(domain_facts)
+    print(f"  Facts assembled: {len(facts)} keys")
+    for k, v in sorted(facts.items()):
+        if k != "company_name":
+            print(f"    {k}: {v}")
 
     # Check for fraud indicators
     if fraud_alerts:
@@ -189,6 +204,12 @@ def run_pipeline(
     llm_trace = {}
     if cognitive_available:
         print("\n--- Phase 4b: LLM Risk Assessment ---")
+        # Free OCR model VRAM before loading LLM
+        if ocr_available:
+            try:
+                unload_ocr_model()
+            except Exception:
+                pass
         try:
             engine = CognitiveEngine()
             if engine.is_alive():
