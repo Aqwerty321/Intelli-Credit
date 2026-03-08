@@ -5,6 +5,102 @@
 
 ---
 
+## Quick start (current build)
+
+> The system is implemented and working. Use these commands to run it.
+
+### Prerequisites
+- Ollama running with `sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest` at `http://172.23.112.1:11434`
+- SearXNG Docker container running at `localhost:8888`
+- Python `.venv` activated: `source .venv/bin/activate`
+- Node 18+ for frontend dev
+
+### One-command startup
+```bash
+./scripts/start.sh
+```
+This starts the FastAPI backend on `http://localhost:8000` and the Vite dev server on `http://localhost:5173`.
+
+### Run acceptance tests
+```bash
+./scripts/run_acceptance.sh
+# or directly:
+python -m pytest tests/ -v --tb=short
+```
+Expected: **36/36 PASS**
+
+### Frontend dev only
+```bash
+cd frontend && npm run dev
+```
+
+### API server only
+```bash
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Rule engine v2 — critical authoring rules
+
+> Violating these silently produces 0.0 risk_adjustment for every rule.
+
+1. **`risk_adjustment` must be on each threshold object**, not on the `action` block.
+2. **`direction: above|below`** must appear on the condition block (default: `above`).
+3. Top-level `version: "2.0"` is required.
+
+**Correct example (v2):**
+```yaml
+version: "2.0"
+condition:
+  type: threshold
+  direction: above
+  field: dpd_days
+  thresholds:
+    - value: 90
+      label: critical
+      risk_adjustment: 0.40
+    - value: 30
+      label: moderate
+      risk_adjustment: 0.20
+```
+
+**Wrong (v1 — silent zero bug):**
+```yaml
+# NEVER DO THIS
+action:
+  risk_adjustment_critical: 0.40   # namespaced key — never read
+  risk_adjustment_moderate: 0.20
+```
+
+---
+
+## Research agent — key constants
+
+- `DOMAIN_BLOCKLIST` in `services/agents/research_agent.py`: 26 domains that produce noise (Reddit, Cambridge Dictionary, Amazon, etc.). Add new noise domains here.
+- `DOMAIN_TIERS`: 25-entry confidence map. RBI/SEBI = 0.95; ET/BL = 0.75; default = 0.40.
+- `_entity_matches()`: requires full company name phrase OR ≥2 significant words (>4 chars) present in result text. This prevents "Apex Steel Ltd" matching recipe pages containing "steel".
+- Cache path: `storage/cache/research/<sanitized_company_name>_research.json`. Delete to force re-research.
+
+---
+
+## Demo seed data
+
+`demo/seed/` — three JSON cases ready to load through the UI or API:
+- `case_approve.json` — Sunrise Textiles (clean, CMR 3, no DPD) → APPROVE
+- `case_conditional.json` — Apex Steel (borderline, CMR 6, DPD 45, ITC excess) → CONDITIONAL
+- `case_reject.json` — Greenfield Pharma (CMR 9, DPD 120, cycle detected, criminal cases) → HARD REJECT
+
+To load via API:
+```bash
+curl -X POST http://localhost:8000/api/cases/ \
+  -H "Content-Type: application/json" \
+  -d @demo/seed/case_approve.json
+```
+
+---
+
 ## Table of contents
 
 1. [Scope & Assumptions](#scope--assumptions)

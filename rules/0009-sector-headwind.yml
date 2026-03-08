@@ -3,7 +3,7 @@
 ---
 rule_id: "0009"
 slug: "sector-headwind"
-version: "1.0"
+version: "2.0"
 severity: "MEDIUM"
 category: "conditions"
 

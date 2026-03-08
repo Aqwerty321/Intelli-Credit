@@ -245,3 +245,61 @@ Provide `scripts/run_acceptance.sh` to run the full suite and output JSON.
 * `LEGAL.md` (crawler policy + data governance)
 
 ---
+
+## Implementation status (current build)
+
+> This section documents what has been built and validated as of the current commit.
+
+### What is running
+
+| Layer | Component | Status |
+|---|---|---|
+| Document ingestion | PaddleOCR-VL (Python 3.12 venv) | ✅ Working — F1=1.0 on smoke set |
+| Cognitive core | DeepSeek-R1 8B Q8 via Ollama | ✅ Running at `http://172.23.112.1:11434` |
+| Rule engine | `services/reasoning/rule_engine.py` v2 | ✅ 22/22 unit tests PASS |
+| Rules | `rules/0001–0010 *.yml` — all at schema v2 | ✅ Validated, no namespaced keys |
+| Research agent | `services/agents/research_agent.py` | ✅ Domain blocklist, tiers, entity gating, caching |
+| Web extraction | SearXNG Docker at `localhost:8888` | ✅ Running |
+| Data substrate | DuckDB 8-table lakehouse | ✅ Operational |
+| API server | FastAPI at `localhost:8000` | ✅ 13 routes, SSE streaming |
+| Frontend | Vite + React 18 + Tailwind CSS | ✅ Builds clean (37 modules) |
+| Test suite | pytest — 36 tests | ✅ 36/36 PASS |
+
+### Rule engine v2 schema
+
+All rules stored in `rules/` use canonical v2 schema:
+- `version: "2.0"` at top level
+- `direction: above|below` on the condition block (default: `above`)
+- `risk_adjustment` lives on **each threshold object**, not on the `action` block
+- `_eval_threshold()` walks thresholds ascending for `above` (highest crossed wins) and descending for `below` (lowest crossed wins)
+- Rule firings include `schema_version: "v2"` and `missing_data_flags` in their serialized output
+- Template strings use `_safe_format()` which substitutes `[N/A]` for any missing keys instead of raising `KeyError`
+
+**Forbidden (v2 invariant):** never use namespaced keys like `risk_adjustment_high:` inside the `action:` block. These silently return 0.0.
+
+### Research agent precision controls
+
+- `DOMAIN_TIERS`: 25-entry dict mapping domain → confidence score (0.40–0.95). RBI/SEBI/MCA at top; dictionaries/Reddit at bottom.
+- `DOMAIN_BLOCKLIST`: 26-entry set — results from these domains are dropped before scoring.
+- `_entity_matches()`: requires the exact company name phrase OR 2+ significant words (>4 chars) from the name both appear in the result text. Prevents false positives like "steel cut oats recipe" matching "Apex Steel Ltd".
+- File caching: `storage/cache/research/<company>_research.json` — checked before hitting SearXNG.
+- Every finding includes `sentiment_score` (float) and `domain_confidence` (float) fields.
+
+### Full-stack UI
+
+- **Backend**: `app/main.py` + `app/api/cases.py` (CRUD) + `app/api/run.py` (SSE streaming)
+- **Frontend**: `frontend/src/components/` — `CaseList`, `CaseCreate`, `CaseDetail`
+- `CaseDetail` has 5 tabs: Documents → Run → Evidence → Trace → CAM
+- Run tab streams pipeline progress via SSE (Server-Sent Events) — no polling
+
+### Demo dataset
+
+`demo/seed/` contains three representative cases for demo/smoke-testing:
+
+| File | Company | Expected | Key signals |
+|---|---|---|---|
+| `case_approve.json` | Sunrise Textiles | APPROVE | CMR=3, DPD=0, collateral=1.6x |
+| `case_conditional.json` | Apex Steel | CONDITIONAL | CMR=6, DPD=45, ITC excess=33% |
+| `case_reject.json` | Greenfield Pharma | HARD REJECT | CMR=9, DPD=120, cycle detected, 2 criminal cases |
+
+---

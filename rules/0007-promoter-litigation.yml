@@ -3,7 +3,7 @@
 ---
 rule_id: "0007"
 slug: "promoter-litigation"
-version: "1.0"
+version: "2.0"
 severity: "HIGH"
 category: "promoter_risk"
 
@@ -19,19 +19,19 @@ condition:
     - category: "criminal"
       count: 1
       severity: "CRITICAL"
+      risk_adjustment: 0.35
     - category: "civil_high_value"
       count: 2
       min_value: 10000000  # INR 1 crore
       severity: "HIGH"
+      risk_adjustment: 0.20
     - category: "civil_any"
       count: 5
       severity: "MEDIUM"
+      risk_adjustment: 0.10
 
 action:
   flag: "RED_FLAG"
-  risk_adjustment_criminal: 0.35
-  risk_adjustment_civil_high: 0.20
-  risk_adjustment_civil_general: 0.10
   cam_section: "character"
   rationale_template: >
     Promoter {promoter_name} has {litigation_count} active litigation cases:

@@ -1,51 +1,50 @@
-# Rule 0003: Days Past Due Threshold
-# Flags accounts with DPD exceeding regulatory thresholds
+# Rule 0003: Days Past Due Threshold — v2
 ---
 rule_id: "0003"
 slug: "dpd-threshold"
-version: "1.0"
+version: "2.0"
 severity: "HIGH"
 category: "credit_history"
 
 description: >
   Evaluates Days Past Due (DPD) from CIBIL/credit bureau reports.
-  DPD > 90 days triggers NPA classification per RBI norms.
-  DPD > 30 days is an early warning signal.
+  DPD >= 30 is an early warning signal; >= 90 triggers NPA classification.
 
 condition:
   type: "threshold_comparison"
   field: "max_dpd_last_12m"
+  direction: "above"
   thresholds:
     - level: "warning"
       value: 30
       severity: "MEDIUM"
+      risk_adjustment: 0.10
     - level: "flag"
       value: 60
       severity: "HIGH"
+      risk_adjustment: 0.20
     - level: "hard_constraint"
       value: 90
       severity: "CRITICAL"
+      risk_adjustment: 0.40
 
 action:
   flag: "RED_FLAG"
-  risk_adjustment_30dpd: 0.10
-  risk_adjustment_60dpd: 0.20
-  risk_adjustment_90dpd: 0.40
   cam_section: "character"
   rationale_template: >
-    Maximum DPD of {max_dpd} days recorded in the last 12 months across
-    {facility_count} credit facilities. {dpd_classification} per RBI NPA norms.
+    Maximum DPD of {max_dpd_last_12m} days recorded in the last 12 months.
+    {threshold_severity} risk per RBI NPA norms (level: {threshold_level}).
 
 pyreason_predicate: |
   dpd_risk(Company, high) :- [threshold, 1.0]
-    cibil_dpd(Company, FacilityId, DPD),
-    DPD > 90
+    cibil_dpd(Company, FacilityId, DPD), DPD > 90
   dpd_risk(Company, medium) :- [threshold, 1.0]
-    cibil_dpd(Company, FacilityId, DPD),
-    DPD > 30, DPD <= 90
+    cibil_dpd(Company, FacilityId, DPD), DPD > 30, DPD <= 90
 
 tests:
   - input: { max_dpd_last_12m: 120 }
-    expected: { flag: "RED_FLAG", severity: "CRITICAL", risk_adjustment: 0.40 }
+    expected: { flag: "RED_FLAG", risk_adjustment: 0.40 }
+  - input: { max_dpd_last_12m: 45 }
+    expected: { flag: "RED_FLAG", risk_adjustment: 0.10 }
   - input: { max_dpd_last_12m: 15 }
     expected: { flag: null }

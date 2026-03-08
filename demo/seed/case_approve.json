@@ -1,0 +1,26 @@
+{
+  "case_label": "APPROVE",
+  "company_name": "Sunrise Textiles Pvt Ltd",
+  "loan_amount": 5000000,
+  "loan_purpose": "Working Capital",
+  "sector": "textile manufacturing",
+  "location": "Surat, Gujarat",
+  "promoters": [
+    {"name": "Ramesh Patel", "din": "00112233", "age": 52}
+  ],
+  "known_facts": ["established 2001", "exports to EU", "3 manufacturing units"],
+  "domain_facts": {
+    "gstr3b_itc_claimed": 800000,
+    "gstr2a_itc_available": 790000,
+    "max_dpd_last_12m": 0,
+    "dishonoured_cheque_count_12m": 0,
+    "cibil_cmr_rank": 3,
+    "capacity_utilization_pct": 78,
+    "collateral_value": 8000000,
+    "gst_declared_turnover": 42000000,
+    "bank_statement_credits": 43000000,
+    "sector_sentiment_score": 0.15,
+    "evidence_count": 0
+  },
+  "rationale": "Strong CIBIL (CMR=3), zero DPD, adequate collateral (1.6x), good capacity utilization (78%). Minor ITC variance within acceptable range. APPROVE."
+}

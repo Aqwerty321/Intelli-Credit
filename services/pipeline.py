@@ -19,6 +19,7 @@ def run_pipeline(
     loan_amount: float,
     loan_purpose: str = "Working Capital",
     primary_insights: list[str] = None,
+    research_findings: list[dict] = None,
     output_dir: str = None,
 ):
     """Run the complete credit appraisal pipeline."""
@@ -133,17 +134,10 @@ def run_pipeline(
     print("\n--- Phase 3: Graph Analysis ---")
     graph_builder = TransactionGraphBuilder()
 
-    # Build sample graph from GSTIN transactions (if available)
+    # Build graph only from documents that provide real transaction data.
+    # Never fabricate edges with random amounts — that poisons fraud detection.
     gstins = all_extracted_fields.get("gstin", [])
-    for i, gstin in enumerate(gstins):
-        for j, other_gstin in enumerate(gstins):
-            if i != j:
-                import random
-                graph_builder.add_transaction(
-                    gstin, other_gstin,
-                    amount=random.randint(100000, 5000000),
-                    txn_type="GST_INVOICE"
-                )
+    print(f"  GSTINs found in documents: {gstins}")
 
     fraud_alerts = graph_builder.run_all_detections()
     print(f"  Graph: {graph_builder.get_node_count()} nodes, {graph_builder.get_edge_count()} edges")
@@ -163,6 +157,12 @@ def run_pipeline(
     }
 
     # Merge real domain facts extracted from documents (CIBIL, GST ITC)
+    # Wire research findings → facts (sector headwind rule needs these)
+    research_findings = research_findings or []
+    negative_findings = [f for f in research_findings if f.get("risk_impact") == "negative"]
+    all_sentiments = [f.get("sentiment_score", 0.0) for f in research_findings if "sentiment_score" in f]
+    sector_sentiment = sum(all_sentiments) / len(all_sentiments) if all_sentiments else 0.1
+
     # Provide conservative defaults for facts not found in documents
     defaults = {
         "max_dpd_last_12m": 0,
@@ -170,8 +170,8 @@ def run_pipeline(
         "cibil_cmr_rank": 5,
         "capacity_utilization_pct": 70,
         "collateral_value": loan_amount * 1.5,
-        "sector_sentiment_score": 0.1,
-        "evidence_count": 0,
+        "sector_sentiment_score": sector_sentiment,
+        "evidence_count": len(negative_findings),
     }
     for k, v in defaults.items():
         if k not in domain_facts:
@@ -305,7 +305,7 @@ def run_pipeline(
             "rule_id": rf.rule_id,
         } for rf in rule_firings],
         rules_fired=[rf.to_dict() for rf in rule_firings],
-        research_findings=[],
+        research_findings=[f if isinstance(f, dict) else vars(f) for f in research_findings],
         neuro_symbolic_trace=[rf.to_dict() for rf in rule_firings] + ([llm_trace] if llm_trace else []),
         provenance_references=[],
         primary_insights=(primary_insights or []) + (

@@ -1,40 +1,39 @@
-# Rule 0005: CIBIL CMR Threshold
-# Flags companies with poor CIBIL MSME Rank (CMR)
+# Rule 0005: CIBIL CMR Threshold — v2
 ---
 rule_id: "0005"
 slug: "cibil-cmr-threshold"
-version: "1.0"
+version: "2.0"
 severity: "HIGH"
 category: "credit_history"
 
 description: >
-  Evaluates the CIBIL MSME Rank (CMR) from commercial credit reports.
-  CMR ranges 1-10 (1=lowest risk, 10=highest risk). CMR > 7 is a significant
-  risk indicator. CMR > 8 is a hard constraint for most lenders.
+  Evaluates the CIBIL MSME Rank (CMR) 1-10 (1=lowest risk, 10=highest risk).
+  CMR >= 6 is a warning; >= 7 is a flag; >= 9 is critical.
 
 condition:
   type: "threshold_comparison"
   field: "cibil_cmr_rank"
+  direction: "above"
   thresholds:
     - level: "warning"
       value: 6
       severity: "MEDIUM"
+      risk_adjustment: 0.10
     - level: "flag"
       value: 7
       severity: "HIGH"
+      risk_adjustment: 0.25
     - level: "hard_constraint"
       value: 9
       severity: "CRITICAL"
+      risk_adjustment: 0.40
 
 action:
   flag: "RED_FLAG"
-  risk_adjustment_cmr7: 0.15
-  risk_adjustment_cmr8: 0.25
-  risk_adjustment_cmr9: 0.40
   cam_section: "character"
   rationale_template: >
-    CIBIL MSME Rank (CMR) is {cmr_rank}/10, indicating {risk_level} credit risk.
-    Credit Profile Summary shows {credit_profile_summary}.
+    CIBIL MSME Rank (CMR) is {cibil_cmr_rank}/10 — {threshold_severity} credit
+    risk (level: {threshold_level}).
 
 pyreason_predicate: |
   cmr_risk(Company, critical) :- [threshold, 1.0]
@@ -43,7 +42,9 @@ pyreason_predicate: |
     cibil_cmr(Company, CMR), CMR >= 7, CMR < 9
 
 tests:
-  - input: { cibil_cmr_rank: 8 }
-    expected: { flag: "RED_FLAG", severity: "HIGH" }
+  - input: { cibil_cmr_rank: 9 }
+    expected: { flag: "RED_FLAG", risk_adjustment: 0.40 }
+  - input: { cibil_cmr_rank: 7 }
+    expected: { flag: "RED_FLAG", risk_adjustment: 0.25 }
   - input: { cibil_cmr_rank: 4 }
     expected: { flag: null }

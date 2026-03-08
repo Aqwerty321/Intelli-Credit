@@ -44,3 +44,8 @@ tests/research_depth/
 llama.cpp/
 *.o
 *.so
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+

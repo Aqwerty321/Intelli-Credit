@@ -25,6 +25,38 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 SEARXNG_BASE = os.environ.get("SEARXNG_URL", "http://localhost:8888")
 
+# ---------------------------------------------------------------------------
+# Domain quality tiers: higher tier → higher base confidence
+# ---------------------------------------------------------------------------
+DOMAIN_TIERS: dict[str, float] = {
+    # Tier 1 — authoritative regulatory / govt sources
+    "rbi.org.in": 0.95, "sebi.gov.in": 0.95, "mca.gov.in": 0.90,
+    "incometaxindiaefiling.gov.in": 0.90, "gstn.org.in": 0.90,
+    "dipp.gov.in": 0.85, "irdai.gov.in": 0.85, "pib.gov.in": 0.85,
+    "ecourts.gov.in": 0.90, "bseindia.com": 0.85, "nseindia.com": 0.85,
+    "ibef.org": 0.80,
+    # Tier 2 — credible business / news outlets
+    "economictimes.com": 0.75, "business-standard.com": 0.75,
+    "livemint.com": 0.75, "moneycontrol.com": 0.70,
+    "financialexpress.com": 0.70, "thehindu.com": 0.70,
+    "ndtv.com": 0.65, "indianexpress.com": 0.65, "reuters.com": 0.75,
+    "bloomberg.com": 0.75, "ft.com": 0.75, "wsj.com": 0.70,
+    # Tier 3 — general / acceptable
+    "wikipedia.org": 0.50,
+}
+
+# Any URL whose domain contains any of these strings is discarded.
+DOMAIN_BLOCKLIST: set[str] = {
+    "dictionary.cambridge.org", "merriam-webster.com",
+    "reddit.com", "quora.com", "answers.yahoo.com", "stackexchange.com",
+    "facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com",
+    "pinterest.com", "tiktok.com",
+    "amazon.com", "flipkart.com", "snapdeal.com",
+    "justdial.com", "indiamart.com", "tradeindia.com", "sulekha.com",
+    "practo.com", "naukri.com", "indeed.com", "glassdoor.com",
+    "translate.google.com", "translate.bing.com",
+}
+
 
 # ---------------------------------------------------------------------------
 # SearXNG web search (self-hosted, real results from multiple engines)
@@ -51,14 +83,20 @@ def web_search(query: str, max_results: int = 8) -> list[dict]:
         return []
 
     results = []
-    for r in data.get("results", [])[:max_results]:
+    for r in data.get("results", [])[:max_results * 3]:  # over-fetch to allow blocklist filtering
+        url = r.get("url", "")
+        # Skip blocklisted domains
+        if any(blocked in url for blocked in DOMAIN_BLOCKLIST):
+            continue
         results.append({
-            "url": r.get("url", ""),
+            "url": url,
             "title": r.get("title", ""),
             "snippet": r.get("content", ""),
             "engines": r.get("engines", []),
             "score": r.get("score", 0),
         })
+        if len(results) >= max_results:
+            break
     return results
 
 
@@ -126,6 +164,40 @@ class ResearchAgent:
 
         return queries
 
+    def _domain_confidence(self, url: str) -> float:
+        """Return base confidence for a URL based on its domain tier."""
+        for domain, score in DOMAIN_TIERS.items():
+            if domain in url:
+                return score
+        return 0.40  # default for unlisted domains
+
+    def _entity_matches(self, company: dict, text: str) -> bool:
+        """
+        Return True if text references the company or its sector.
+        Uses conservative matching to prevent common-word false positives:
+        - Full company name as substring, OR
+        - Full sector phrase as substring, OR
+        - At least 2 distinct significant words from company name both appear
+        """
+        name = company.get("name", "").lower()
+        sector = company.get("sector", "").lower()
+        text_lower = text.lower()
+
+        # Full name phrase match
+        if name and len(name) > 4 and name in text_lower:
+            return True
+
+        # Full sector phrase match (only if sector phrase is >= 6 chars)
+        if sector and len(sector) >= 6 and sector in text_lower:
+            return True
+
+        # Multi-word name match: require 2+ significant words (>4 chars) to match
+        significant = [w for w in name.split() if len(w) > 4 and w not in {"india", "pvt", "ltd", "limited", "private", "corp"}]
+        if len(significant) >= 2 and sum(1 for w in significant if w in text_lower) >= 2:
+            return True
+
+        return False
+
     def analyze_finding(self, company: dict, search_result: dict,
                         known_facts: set) -> Optional[dict]:
         """Use LLM to analyze a search result for credit relevance."""
@@ -136,6 +208,12 @@ class ResearchAgent:
         if not snippet or len(snippet) < 20:
             return None
 
+        # Entity / topic gating — reject results with no company or sector mention
+        combined = title + " " + snippet
+        if not self._entity_matches(company, combined):
+            return None
+
+        domain_conf = self._domain_confidence(url)
         company_name = company.get("name", "")
 
         if self.llm_available:
@@ -177,8 +255,10 @@ class ResearchAgent:
                             "source_title": title,
                             "category": analysis.get("category", "general"),
                             "risk_impact": analysis.get("risk_impact", "neutral"),
-                            "confidence": analysis.get("confidence", 0.5),
-                            "corroborated": True,  # LLM-assessed relevance counts as corroboration
+                            "confidence": max(analysis.get("confidence", 0.5), domain_conf),
+                            "sentiment_score": -0.6 if analysis.get("risk_impact") == "negative" else
+                                               0.4 if analysis.get("risk_impact") == "positive" else 0.0,
+                            "corroborated": True,
                             "novel": is_novel,
                             "raw_snippet": snippet[:200],
                             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -224,7 +304,8 @@ class ResearchAgent:
                 "source_title": title,
                 "category": "general",
                 "risk_impact": "negative",
-                "confidence": 0.4,
+                "confidence": domain_conf,
+                "sentiment_score": -0.4,
                 "corroborated": True,
                 "novel": is_novel,
                 "raw_snippet": snippet[:200],
@@ -233,13 +314,28 @@ class ResearchAgent:
 
         return None
 
-    def research_company(self, company: dict) -> dict:
+    def research_company(self, company: dict, use_cache: bool = True) -> dict:
         """
         Run full research workflow for a company.
         Returns structured research results with findings.
+        Results are cached to storage/cache/research/ by company name.
         """
         company_name = company.get("name", "Unknown")
         known_facts = set(company.get("known_facts", []))
+
+        # Check cache
+        cache_dir = PROJECT_ROOT / "storage" / "cache" / "research"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = re.sub(r'[^\w]', '_', company_name.lower())[:60]
+        cache_file = cache_dir / f"{safe_name}_research.json"
+        if use_cache and cache_file.exists():
+            try:
+                with open(cache_file) as f:
+                    cached = json.load(f)
+                print(f"  [Research] Cache hit: {cache_file.name} ({len(cached.get('findings', []))} findings)")
+                return cached
+            except Exception:
+                pass  # Cache corrupt, proceed with fresh research
 
         print(f"\n  [Research] Researching: {company_name}")
         t0 = time.time()
@@ -318,7 +414,7 @@ class ResearchAgent:
         elapsed = time.time() - t0
         print(f"  [Research] Found {len(unique_findings)} relevant findings in {elapsed:.1f}s")
 
-        return {
+        result = {
             "company": company_name,
             "queries_executed": len(queries),
             "web_results_found": len(all_results),
@@ -326,6 +422,15 @@ class ResearchAgent:
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }
+
+        # Write cache
+        try:
+            with open(cache_file, "w") as f:
+                json.dump(result, f, indent=2)
+        except Exception:
+            pass
+
+        return result
 
 
 def run_research_for_test_companies(output_dir: str = None):

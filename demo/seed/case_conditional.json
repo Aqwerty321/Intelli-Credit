@@ -1,0 +1,27 @@
+{
+  "case_label": "CONDITIONAL",
+  "company_name": "Apex Steel Components Ltd",
+  "loan_amount": 15000000,
+  "loan_purpose": "Term Loan",
+  "sector": "steel manufacturing",
+  "location": "Pune, Maharashtra",
+  "promoters": [
+    {"name": "Vikram Shah", "din": "00445566", "age": 47}
+  ],
+  "known_facts": ["auto ancillary supplier", "3 civil suits pending"],
+  "domain_facts": {
+    "gstr3b_itc_claimed": 2800000,
+    "gstr2a_itc_available": 2100000,
+    "max_dpd_last_12m": 45,
+    "dishonoured_cheque_count_12m": 1,
+    "cibil_cmr_rank": 6,
+    "capacity_utilization_pct": 55,
+    "collateral_value": 18000000,
+    "gst_declared_turnover": 85000000,
+    "bank_statement_credits": 88000000,
+    "civil_any_cases": 3,
+    "sector_sentiment_score": -0.2,
+    "evidence_count": 1
+  },
+  "rationale": "ITC excess (33%), DPD=45d (warning), CMR=6 (warning), capacity at 55%, civil suits. Collateral adequate (1.2x). Borderline — conditional approval with risk premium and enhanced monitoring."
+}

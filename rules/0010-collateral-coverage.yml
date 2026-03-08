@@ -3,7 +3,7 @@
 ---
 rule_id: "0010"
 slug: "collateral-coverage"
-version: "1.0"
+version: "2.0"
 severity: "HIGH"
 category: "collateral"
 
@@ -20,17 +20,18 @@ condition:
     - level: "hard_constraint"
       ratio: 1.0
       severity: "CRITICAL"
+      risk_adjustment: 0.30
     - level: "flag"
       ratio: 1.25
       severity: "HIGH"
+      risk_adjustment: 0.15
     - level: "warning"
       ratio: 1.5
       severity: "MEDIUM"
+      risk_adjustment: 0.05
 
 action:
   flag: "RED_FLAG"
-  risk_adjustment_below125: 0.15
-  risk_adjustment_below100: 0.30
   cam_section: "collateral"
   rationale_template: >
     Collateral coverage ratio is {coverage_ratio}x (collateral value

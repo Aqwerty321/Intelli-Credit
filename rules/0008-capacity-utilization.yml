@@ -3,7 +3,7 @@
 ---
 rule_id: "0008"
 slug: "capacity-utilization"
-version: "1.0"
+version: "2.0"
 severity: "MEDIUM"
 category: "operational_risk"
 
@@ -15,21 +15,23 @@ description: >
 condition:
   type: "threshold_comparison"
   field: "capacity_utilization_pct"
+  direction: "below"
   thresholds:
     - level: "warning"
       value: 60
       severity: "LOW"
+      risk_adjustment: 0.05
     - level: "flag"
       value: 50
       severity: "MEDIUM"
+      risk_adjustment: 0.10
     - level: "hard_constraint"
       value: 30
       severity: "HIGH"
+      risk_adjustment: 0.25
 
 action:
   flag: "AMBER_FLAG"
-  risk_adjustment_below50: 0.10
-  risk_adjustment_below30: 0.25
   cam_section: "capacity"
   rationale_template: >
     Factory/business capacity utilization at {utilization_pct}%, below the

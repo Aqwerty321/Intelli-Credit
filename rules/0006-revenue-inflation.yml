@@ -3,7 +3,7 @@
 ---
 rule_id: "0006"
 slug: "revenue-inflation"
-version: "1.0"
+version: "2.0"
 severity: "HIGH"
 category: "gst_reconciliation"
 

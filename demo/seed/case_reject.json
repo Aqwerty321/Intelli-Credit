@@ -1,0 +1,33 @@
+{
+  "case_label": "REJECT",
+  "company_name": "Greenfield Pharma Industries Pvt Ltd",
+  "loan_amount": 25000000,
+  "loan_purpose": "Equipment Finance",
+  "sector": "pharmaceutical chemicals",
+  "location": "Hyderabad, Telangana",
+  "promoters": [
+    {"name": "Suresh Kumar Reddy", "din": "00778899", "age": 38}
+  ],
+  "known_facts": ["SFIO investigation ongoing", "2 criminal cases promoter"],
+  "domain_facts": {
+    "gstr3b_itc_claimed": 9500000,
+    "gstr2a_itc_available": 6000000,
+    "max_dpd_last_12m": 120,
+    "dishonoured_cheque_count_12m": 7,
+    "cibil_cmr_rank": 9,
+    "capacity_utilization_pct": 25,
+    "collateral_value": 22000000,
+    "gst_declared_turnover": 120000000,
+    "bank_statement_credits": 48000000,
+    "criminal_cases": 2,
+    "civil_high_value_cases": 1,
+    "cycle_detected": true,
+    "cycle_length": 4,
+    "total_value": 15000000,
+    "entity_count": 4,
+    "cycle_description": "4-entity circular GST invoice chain",
+    "sector_sentiment_score": -0.7,
+    "evidence_count": 5
+  },
+  "rationale": "HARD REJECT: Circular trading detected, criminal cases against promoter, 120-day DPD (NPA classification), CMR=9 (critical), massive ITC excess (58%), capacity at 25%. Multiple hard constraints violated."
+}
