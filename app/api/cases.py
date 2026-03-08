@@ -141,7 +141,7 @@ def get_case(case_id: str):
     if notes_path.exists():
         try:
             with open(notes_path) as f:
-                meta["officer_notes"] = json.load(f)
+                meta["officer_notes"] = [_normalize_note_record(n) for n in json.load(f)]
         except Exception:
             meta["officer_notes"] = []
     else:
@@ -204,10 +204,30 @@ def delete_case(case_id: str):
 # Officer Notes
 # ---------------------------------------------------------------------------
 
+def _normalize_tags(tags: list) -> list:
+    """Lowercase, strip, deduplicate, limit to 5 tags."""
+    seen = {}
+    for t in tags:
+        cleaned = str(t).lower().strip()
+        if cleaned:
+            seen[cleaned] = None
+    return list(seen.keys())[:5]
+
+
+def _normalize_note_record(raw: dict) -> dict:
+    """Back-fill fields missing from legacy notes that predate Notes 2.0."""
+    raw.setdefault("tags", [])
+    raw.setdefault("pinned", False)
+    raw.setdefault("updated_at", raw.get("created_at", ""))
+    return raw
+
+
 class OfficerNote(BaseModel):
     author: str
     text: str
     note_type: str = "general"   # "general" | "risk" | "approval" | "escalation"
+    tags: list[str] = []
+    pinned: bool = False
 
 
 class OfficerNoteRecord(BaseModel):
@@ -216,12 +236,22 @@ class OfficerNoteRecord(BaseModel):
     text: str
     note_type: str
     created_at: str
+    updated_at: str = ""
+    tags: list[str] = []
+    pinned: bool = False
+
+
+class NoteUpdate(BaseModel):
+    text: Optional[str] = None
+    note_type: Optional[str] = None
+    tags: Optional[list[str]] = None
+    pinned: Optional[bool] = None
 
 
 @router.post("/{case_id}/notes", status_code=201, response_model=OfficerNoteRecord)
 def add_officer_note(case_id: str, note: OfficerNote):
     """Add a credit-officer note to a case."""
-    meta = _load_meta(case_id)
+    _load_meta(case_id)
     notes_path = _case_dir(case_id) / "notes.json"
 
     notes: list[dict] = []
@@ -229,13 +259,16 @@ def add_officer_note(case_id: str, note: OfficerNote):
         with open(notes_path) as f:
             notes = json.load(f)
 
-    import uuid as _uuid
+    now = datetime.now(timezone.utc).isoformat()
     record = OfficerNoteRecord(
-        note_id=f"note_{_uuid.uuid4().hex[:8]}",
+        note_id=f"note_{uuid.uuid4().hex[:8]}",
         author=note.author,
         text=note.text,
         note_type=note.note_type,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=now,
+        updated_at=now,
+        tags=_normalize_tags(note.tags),
+        pinned=note.pinned,
     )
     notes.append(record.model_dump())
     with open(notes_path, "w") as f:
@@ -252,4 +285,57 @@ def get_officer_notes(case_id: str):
     if not notes_path.exists():
         return []
     with open(notes_path) as f:
-        return json.load(f)
+        raw_notes = json.load(f)
+    return [_normalize_note_record(n) for n in raw_notes]
+
+
+@router.patch("/{case_id}/notes/{note_id}", response_model=OfficerNoteRecord)
+def update_officer_note(case_id: str, note_id: str, patch: NoteUpdate):
+    """Partially update an officer note (text, note_type, tags, pinned)."""
+    _load_meta(case_id)
+    notes_path = _case_dir(case_id) / "notes.json"
+    if not notes_path.exists():
+        raise HTTPException(404, f"Note {note_id} not found")
+
+    with open(notes_path) as f:
+        notes = json.load(f)
+
+    idx = next((i for i, n in enumerate(notes) if n.get("note_id") == note_id), None)
+    if idx is None:
+        raise HTTPException(404, f"Note {note_id} not found")
+
+    note = _normalize_note_record(notes[idx])
+    if patch.text is not None:
+        note["text"] = patch.text
+    if patch.note_type is not None:
+        note["note_type"] = patch.note_type
+    if patch.tags is not None:
+        note["tags"] = _normalize_tags(patch.tags)
+    if patch.pinned is not None:
+        note["pinned"] = patch.pinned
+    note["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    notes[idx] = note
+    with open(notes_path, "w") as f:
+        json.dump(notes, f, indent=2)
+
+    return note
+
+
+@router.delete("/{case_id}/notes/{note_id}", status_code=204)
+def delete_officer_note(case_id: str, note_id: str):
+    """Delete a single officer note."""
+    _load_meta(case_id)
+    notes_path = _case_dir(case_id) / "notes.json"
+    if not notes_path.exists():
+        raise HTTPException(404, f"Note {note_id} not found")
+
+    with open(notes_path) as f:
+        notes = json.load(f)
+
+    filtered = [n for n in notes if n.get("note_id") != note_id]
+    if len(filtered) == len(notes):
+        raise HTTPException(404, f"Note {note_id} not found")
+
+    with open(notes_path, "w") as f:
+        json.dump(filtered, f, indent=2)

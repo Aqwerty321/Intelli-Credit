@@ -7,8 +7,8 @@
 
 ## Quick start (current build)
 
-> The system is implemented and working. Phase 3 + Phase 4 complete.  
-> **Test baseline: 172+ tests pass.  Trace schema: v3.  Frontend: 37 modules.**
+> The system is implemented and working. Phase 3 + Phase 4 + Phase 5 complete.  
+> **Test baseline: 197+ tests pass (175 Phase 4 + 22 Phase 5 backend).  Frontend Vitest: 24 unit tests.  Trace schema: v3.  Frontend: 39 modules.**
 
 ### Prerequisites
 - Ollama running with `sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest` at `http://172.23.112.1:11434`
@@ -128,6 +128,55 @@ New keys: `research_plan`, `claim_graph`, `counterfactuals`, `evidence_judge`, `
 ### Frontend (Judge Mode)
 - `CaseDetail.jsx` — Judge tab appears when `schema_version === "v3"` after a run
 - Shows: Evidence Quality (precision@10, corroboration%), Claim Graph, Counterfactuals, Search Plan
+
+---
+
+## Phase 5 implementation status — Full Frontend Feature Access + Notes 2.0
+
+### Backend (`app/api/cases.py`)
+- `_normalize_tags(tags)` — lowercase, strip, dedupe, max-5
+- `_normalize_note_record(raw)` — back-fills `tags=[]`, `pinned=False`, `updated_at=created_at` for legacy notes
+- `OfficerNote` extended: `tags: list[str] = []`, `pinned: bool = False`
+- `OfficerNoteRecord` extended: `tags`, `pinned`, `updated_at`
+- `NoteUpdate` model added (all fields Optional)
+- `PATCH /api/cases/{id}/notes/{nid}` — partial update, normalises tags, sets `updated_at`
+- `DELETE /api/cases/{id}/notes/{nid}` — 204, 404 if not found
+- `GET /api/cases/{id}` — `officer_notes` normalised via `_normalize_note_record`
+
+### Frontend
+| File | Change |
+|---|---|
+| `frontend/src/services/api.js` | NEW — centralised async API client; all endpoints |
+| `frontend/src/components/ConfirmModal.jsx` | NEW — reusable danger/safe confirmation modal |
+| `frontend/src/components/CaseDetail.jsx` | Notes 2.0 tab (CRUD, tags, pinned, filter OR logic), case delete, sync-run fallback, SSE error CTA, `downloadCAMUrl` |
+| `frontend/src/components/CaseList.jsx` | "Actions" column with per-row delete + ConfirmModal |
+| `frontend/src/App.jsx` | Health badge (Healthy/Offline), 30 s polling, version `v3.0` |
+
+### Tests
+- `tests/integration/test_phase5_notes.py` — 19 tests (creation, GET, PATCH, DELETE, edge cases)
+- `tests/integration/test_phase5_e2e_flow.py` — 3 tests (full lifecycle, tag edges, 404 paths)
+- `frontend/src/test/ConfirmModal.test.jsx` — 8 Vitest unit tests
+- `frontend/src/test/HealthBadge.test.jsx` — 4 Vitest unit tests
+- `frontend/src/test/CaseListDelete.test.jsx` — 5 Vitest unit tests
+- `frontend/src/test/NotesList.test.jsx` — 7 Vitest unit tests
+- `frontend/e2e/judge_demo.spec.js` — 11 Playwright E2E smoke tests (requires live servers)
+
+### Run Vitest
+```bash
+cd frontend && npm test
+# Expected: 24 tests pass
+```
+
+### Run Playwright E2E (requires live servers)
+```bash
+# In one terminal:
+./scripts/start.sh
+# In another:
+cd frontend && npm run e2e
+```
+
+### Feature access matrix
+See `docs/feature_access_matrix.md` for a full backend-endpoint → UI-component mapping.
 
 ---
 

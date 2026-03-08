@@ -1,5 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import ConfirmModal from './ConfirmModal'
+import {
+  getCase,
+  uploadDocument,
+  listNotes,
+  addNote,
+  updateNote,
+  deleteNote,
+  deleteCase,
+  runSync,
+  streamRunUrl,
+  downloadCAMUrl,
+} from '../services/api'
 
 const VERDICT_STYLE = {
   APPROVE: 'bg-green-50 border-green-400 text-green-800',
@@ -105,21 +118,93 @@ function CollapsibleInputs({ inputs }) {
   )
 }
 
+// ── Style constants ──────────────────────────────────────────────────────────
+
+const NOTE_TYPE_BADGE = {
+  general: 'bg-gray-100 text-gray-700',
+  risk: 'bg-red-100 text-red-700',
+  approval: 'bg-green-100 text-green-700',
+  escalation: 'bg-amber-100 text-amber-700',
+}
+
+// ── Notes helpers ─────────────────────────────────────────────────────────────
+
+const EMPTY_NOTE_FORM = { author: '', text: '', note_type: 'general', tags_raw: '', pinned: false }
+
+function sortNotes(notes) {
+  const pinned = [...notes.filter(n => n.pinned)].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const unpinned = [...notes.filter(n => !n.pinned)].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return [...pinned, ...unpinned]
+}
+
+function applyNoteFilters(notes, { type, keyword, tags }) {
+  return notes.filter(n => {
+    if (type && n.note_type !== type) return false
+    if (keyword) {
+      const kw = keyword.toLowerCase()
+      if (!n.text.toLowerCase().includes(kw) && !n.author.toLowerCase().includes(kw)) return false
+    }
+    if (tags.length > 0 && !tags.some(t => (n.tags || []).includes(t))) return false
+    return true
+  })
+}
+
+function relativeTime(isoStr) {
+  if (!isoStr) return ''
+  const diff = Date.now() - new Date(isoStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return new Date(isoStr).toLocaleDateString()
+}
+
 export default function CaseDetail() {
   const { caseId } = useParams()
+  const navigate = useNavigate()
+
+  // Core state
   const [caseData, setCaseData] = useState(null)
   const [tab, setTab] = useState('documents')
   const [uploading, setUploading] = useState(false)
+
+  // SSE run
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState([])
+  const [sseError, setSseError] = useState(false)
   const logRef = useRef(null)
   const fileRef = useRef(null)
   const esRef = useRef(null)
 
-  const reload = () => fetch(`/api/cases/${caseId}`).then(r => r.json()).then(setCaseData)
+  // Sync run
+  const [runningSync, setRunningSync] = useState(false)
+  const [syncResult, setSyncResult] = useState(null)
+  const [syncError, setSyncError] = useState('')
 
-  useEffect(() => { reload() }, [caseId])
+  // Notes
+  const [notesList, setNotesList] = useState([])
+  const [notesLoading, setNotesLoading] = useState(false)
+  const [noteFilter, setNoteFilter] = useState({ type: '', keyword: '', tags: [] })
+  const [noteForm, setNoteForm] = useState(EMPTY_NOTE_FORM)
+  const [noteEditId, setNoteEditId] = useState(null)
+  const [noteSubmitting, setNoteSubmitting] = useState(false)
+  const [noteDeleteId, setNoteDeleteId] = useState(null)
+
+  // Case delete
+  const [showDeleteCase, setShowDeleteCase] = useState(false)
+
+  const reload = useCallback(() =>
+    getCase(caseId).then(setCaseData).catch(() => {}), [caseId])
+
+  const reloadNotes = useCallback(() => {
+    setNotesLoading(true)
+    listNotes(caseId).then(ns => { setNotesList(ns); setNotesLoading(false) }).catch(() => setNotesLoading(false))
+  }, [caseId])
+
+  useEffect(() => { reload() }, [reload])
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [log])
+  useEffect(() => { if (tab === 'notes') reloadNotes() }, [tab, reloadNotes])
   // Clean up SSE on unmount
   useEffect(() => () => { if (esRef.current) { esRef.current.close(); esRef.current = null } }, [])
 
@@ -127,41 +212,109 @@ export default function CaseDetail() {
     const file = e.target.files[0]
     if (!file) return
     setUploading(true)
-    const fd = new FormData()
-    fd.append('file', file)
-    await fetch(`/api/cases/${caseId}/documents`, { method: 'POST', body: fd })
+    try { await uploadDocument(caseId, file) } finally { setUploading(false) }
     await reload()
-    setUploading(false)
   }
 
   const handleRun = () => {
-    // Close any existing stream before starting a new one
     if (esRef.current) { esRef.current.close(); esRef.current = null }
     setRunning(true)
+    setSseError(false)
+    setSyncResult(null)
     setLog([])
     setTab('run')
-    const es = new EventSource(`/api/run/${caseId}/stream`)
+    const es = new EventSource(streamRunUrl(caseId))
     esRef.current = es
-    es.addEventListener('progress', e => setLog(l => [...l, JSON.parse(e.data)]))
-    es.addEventListener('research_complete', e => setLog(l => [...l, { phase: 'research_complete', ...JSON.parse(e.data) }]))
-    es.addEventListener('research_plan_ready', e => setLog(l => [...l, { phase: 'research_plan_ready', ...JSON.parse(e.data) }]))
-    es.addEventListener('evidence_scored', e => setLog(l => [...l, { phase: 'evidence_scored', ...JSON.parse(e.data) }]))
-    es.addEventListener('claim_graph_ready', e => setLog(l => [...l, { phase: 'claim_graph_ready', ...JSON.parse(e.data) }]))
-    es.addEventListener('counterfactual_ready', e => setLog(l => [...l, { phase: 'counterfactual_ready', ...JSON.parse(e.data) }]))
-    es.addEventListener('warning', e => setLog(l => [...l, { phase: 'warning', ...JSON.parse(e.data) }]))
+    const addLog = (data) => setLog(l => [...l, data])
+    es.addEventListener('progress', e => addLog(JSON.parse(e.data)))
+    es.addEventListener('research_complete', e => addLog({ phase: 'research_complete', ...JSON.parse(e.data) }))
+    es.addEventListener('research_plan_ready', e => addLog({ phase: 'research_plan_ready', ...JSON.parse(e.data) }))
+    es.addEventListener('evidence_scored', e => addLog({ phase: 'evidence_scored', ...JSON.parse(e.data) }))
+    es.addEventListener('claim_graph_ready', e => addLog({ phase: 'claim_graph_ready', ...JSON.parse(e.data) }))
+    es.addEventListener('counterfactual_ready', e => addLog({ phase: 'counterfactual_ready', ...JSON.parse(e.data) }))
+    es.addEventListener('warning', e => addLog({ phase: 'warning', ...JSON.parse(e.data) }))
     es.addEventListener('complete', e => {
-      setLog(l => [...l, { phase: 'DONE', ...JSON.parse(e.data) }])
+      addLog({ phase: 'DONE', ...JSON.parse(e.data) })
       setRunning(false)
-      es.close()
-      esRef.current = null
+      es.close(); esRef.current = null
       reload()
     })
     es.addEventListener('error', e => {
-      setLog(l => [...l, { phase: 'ERROR', message: typeof e.data === 'string' ? e.data : 'Connection error' }])
+      addLog({ phase: 'ERROR', message: typeof e.data === 'string' ? e.data : 'Connection error' })
       setRunning(false)
-      es.close()
-      esRef.current = null
+      setSseError(true)
+      es.close(); esRef.current = null
     })
+  }
+
+  const handleSyncRun = async () => {
+    setRunningSync(true)
+    setSyncError('')
+    setSyncResult(null)
+    try {
+      const result = await runSync(caseId)
+      setSyncResult(result)
+      await reload()
+    } catch (err) {
+      setSyncError(err.message || 'Sync run failed')
+    } finally {
+      setRunningSync(false)
+    }
+  }
+
+  const handleDeleteCase = async () => {
+    await deleteCase(caseId)
+    navigate('/')
+  }
+
+  const handleNoteSubmit = async (e) => {
+    e.preventDefault()
+    if (!noteForm.author.trim() || !noteForm.text.trim()) return
+    setNoteSubmitting(true)
+    const payload = {
+      author: noteForm.author.trim(),
+      text: noteForm.text.trim(),
+      note_type: noteForm.note_type,
+      tags: noteForm.tags_raw.split(',').map(t => t.trim()).filter(Boolean),
+      pinned: noteForm.pinned,
+    }
+    try {
+      if (noteEditId) {
+        await updateNote(caseId, noteEditId, payload)
+        setNoteEditId(null)
+      } else {
+        await addNote(caseId, payload)
+      }
+      setNoteForm(EMPTY_NOTE_FORM)
+      reloadNotes()
+    } finally {
+      setNoteSubmitting(false)
+    }
+  }
+
+  const handleNoteEdit = (note) => {
+    setNoteEditId(note.note_id)
+    setNoteForm({
+      author: note.author,
+      text: note.text,
+      note_type: note.note_type,
+      tags_raw: (note.tags || []).join(', '),
+      pinned: note.pinned || false,
+    })
+  }
+
+  const handleNoteDelete = async () => {
+    if (!noteDeleteId) return
+    await deleteNote(caseId, noteDeleteId)
+    setNoteDeleteId(null)
+    reloadNotes()
+  }
+
+  const toggleTagFilter = (tag) => {
+    setNoteFilter(f => ({
+      ...f,
+      tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag],
+    }))
   }
 
   if (!caseData) return <p className="text-gray-500 py-10 text-center">Loading…</p>
@@ -175,25 +328,56 @@ export default function CaseDetail() {
   const findings = research.findings || []
   const hasRun = !!decision.recommendation
 
-  // v3 extensions
   const isV3 = trace.schema_version === 'v3'
   const evidenceJudge = trace.evidence_judge || null
   const claimGraph = trace.claim_graph || null
   const counterfactuals = trace.counterfactuals || null
   const searchPlan = trace.research_plan || null
 
-  const tabs = ['documents', 'run', 'evidence', 'trace', 'cam', ...(hasRun && isV3 ? ['judge'] : [])]
+  const tabs = [
+    'documents', 'run', 'notes', 'evidence', 'trace', 'cam',
+    ...(hasRun && isV3 ? ['judge'] : []),
+  ]
+
+  const allNoteTags = [...new Set(notesList.flatMap(n => n.tags || []))]
+  const filteredNotes = applyNoteFilters(sortNotes(notesList), noteFilter)
 
   return (
     <div>
+      {/* Confirm modals */}
+      <ConfirmModal
+        open={showDeleteCase}
+        title="Delete Case"
+        body={`This will permanently delete all files for "${caseData.company_name}". This cannot be undone.`}
+        confirmLabel="Delete Case"
+        onConfirm={handleDeleteCase}
+        onCancel={() => setShowDeleteCase(false)}
+      />
+      <ConfirmModal
+        open={!!noteDeleteId}
+        title="Delete Note"
+        body="This note will be permanently removed."
+        confirmLabel="Delete Note"
+        onConfirm={handleNoteDelete}
+        onCancel={() => setNoteDeleteId(null)}
+      />
+
       {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold">{caseData.company_name}</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          ₹{Number(caseData.loan_amount).toLocaleString('en-IN')} · {caseData.loan_purpose}
-          {caseData.sector && ` · ${caseData.sector}`}
-          {caseData.location && `, ${caseData.location}`}
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{caseData.company_name}</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            ₹{Number(caseData.loan_amount).toLocaleString('en-IN')} · {caseData.loan_purpose}
+            {caseData.sector && ` · ${caseData.sector}`}
+            {caseData.location && `, ${caseData.location}`}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowDeleteCase(true)}
+          className="shrink-0 text-sm text-red-500 hover:text-red-700 hover:underline transition-colors"
+        >
+          🗑 Delete Case
+        </button>
       </div>
 
       {/* Verdict banner */}
@@ -212,24 +396,45 @@ export default function CaseDetail() {
         </div>
       )}
 
-      {/* Run / Re-run button */}
-      <div className="mb-4 flex items-center gap-3">
+      {/* Sync result banner */}
+      {syncResult && !running && (
+        <div className="rounded border border-indigo-200 bg-indigo-50 px-4 py-2 mb-4 text-sm flex items-center gap-3">
+          <span className="font-medium text-indigo-700">Sync run complete:</span>
+          <span className={`font-semibold ${syncResult.recommendation === 'APPROVE' ? 'text-green-700' : syncResult.recommendation === 'CONDITIONAL' ? 'text-yellow-700' : 'text-red-700'}`}>
+            {syncResult.recommendation}
+          </span>
+          <span className="text-gray-500">Risk: {syncResult.risk_score?.toFixed(2)}</span>
+          <button onClick={() => setSyncResult(null)} className="ml-auto text-gray-400 hover:text-gray-600 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Run buttons */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
           onClick={handleRun}
-          disabled={running || !caseData.documents?.length}
+          disabled={running || runningSync || !caseData.documents?.length}
           className="px-4 py-2 bg-indigo-600 text-white text-sm rounded font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors"
         >
           {running ? '⏳ Running…' : hasRun ? '↺ Re-run Appraisal' : '▶ Run Appraisal'}
         </button>
+        <button
+          onClick={handleSyncRun}
+          disabled={running || runningSync || !caseData.documents?.length}
+          className="px-4 py-2 bg-gray-700 text-white text-sm rounded font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
+          title="Blocking synchronous run — no streaming"
+        >
+          {runningSync ? '⏳ Sync…' : 'Run (Sync)'}
+        </button>
         {!caseData.documents?.length && <span className="text-xs text-gray-400">Upload documents first</span>}
-        {hasRun && !running && (
+        {syncError && <span className="text-xs text-red-600">⚠ {syncError}</span>}
+        {hasRun && !running && !runningSync && (
           <span className="text-xs text-gray-400">Last run: {trace.timestamp ? new Date(trace.timestamp).toLocaleString() : 'unknown'}</span>
         )}
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-4">
-        <nav className="flex gap-1">
+        <nav className="flex gap-1 flex-wrap">
           {tabs.map(t => (
             <button key={t}
               onClick={() => setTab(t)}
@@ -238,6 +443,7 @@ export default function CaseDetail() {
               {t}
               {t === 'trace' && firings.length > 0 && <span className="ml-1 text-xs bg-indigo-100 text-indigo-600 px-1 rounded">{firings.length}</span>}
               {t === 'evidence' && findings.length > 0 && <span className="ml-1 text-xs bg-gray-100 text-gray-500 px-1 rounded">{findings.length}</span>}
+              {t === 'notes' && notesList.length > 0 && <span className="ml-1 text-xs bg-gray-100 text-gray-500 px-1 rounded">{notesList.length}</span>}
             </button>
           ))}
         </nav>
@@ -283,6 +489,202 @@ export default function CaseDetail() {
             })}
           </div>
           {running && <p className="text-xs text-gray-400 mt-2 animate-pulse">Pipeline running…</p>}
+          {sseError && (
+            <div className="mt-3 flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 rounded px-4 py-2">
+              <span className="text-amber-700">⚠ Stream failed — try sync fallback?</span>
+              <button
+                onClick={handleSyncRun}
+                disabled={runningSync}
+                className="px-3 py-1 bg-gray-700 text-white rounded text-xs hover:bg-gray-800 disabled:opacity-40"
+              >
+                {runningSync ? '⏳ Running…' : 'Run Sync'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Notes */}
+      {tab === 'notes' && (
+        <div className="space-y-4">
+          {/* Filter bar */}
+          <div className="flex flex-wrap gap-3 items-end bg-gray-50 border rounded p-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Type</label>
+              <select
+                value={noteFilter.type}
+                onChange={e => setNoteFilter(f => ({ ...f, type: e.target.value }))}
+                className="text-sm border rounded px-2 py-1 bg-white"
+              >
+                <option value="">All types</option>
+                <option value="general">General</option>
+                <option value="risk">Risk</option>
+                <option value="approval">Approval</option>
+                <option value="escalation">Escalation</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-40">
+              <label className="text-xs text-gray-500 block mb-1">Search</label>
+              <input
+                type="text"
+                placeholder="Keyword…"
+                value={noteFilter.keyword}
+                onChange={e => setNoteFilter(f => ({ ...f, keyword: e.target.value }))}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            {allNoteTags.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Tags (OR)</p>
+                <div className="flex flex-wrap gap-1">
+                  {allNoteTags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleTagFilter(tag)}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors
+                        ${noteFilter.tags.includes(tag)
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'}`}
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(noteFilter.type || noteFilter.keyword || noteFilter.tags.length > 0) && (
+              <button
+                onClick={() => setNoteFilter({ type: '', keyword: '', tags: [] })}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {/* Add / Edit form */}
+          <form onSubmit={handleNoteSubmit} className="bg-white border rounded p-4 space-y-3">
+            <h3 className="text-sm font-medium text-gray-700">{noteEditId ? 'Edit Note' : 'Add Note'}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Author</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Priya Singh"
+                  value={noteForm.author}
+                  onChange={e => setNoteForm(f => ({ ...f, author: e.target.value }))}
+                  className="w-full text-sm border rounded px-2 py-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Type</label>
+                <select
+                  value={noteForm.note_type}
+                  onChange={e => setNoteForm(f => ({ ...f, note_type: e.target.value }))}
+                  className="w-full text-sm border rounded px-2 py-1 bg-white"
+                >
+                  <option value="general">General</option>
+                  <option value="risk">Risk</option>
+                  <option value="approval">Approval</option>
+                  <option value="escalation">Escalation</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Note</label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Enter note text…"
+                value={noteForm.text}
+                onChange={e => setNoteForm(f => ({ ...f, text: e.target.value }))}
+                className="w-full text-sm border rounded px-2 py-1 resize-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Tags <span className="text-gray-400">(comma-separated, max 5)</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. verified, promoter, gst"
+                  value={noteForm.tags_raw}
+                  onChange={e => setNoteForm(f => ({ ...f, tags_raw: e.target.value }))}
+                  className="w-full text-sm border rounded px-2 py-1"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer pb-1">
+                <input
+                  type="checkbox"
+                  checked={noteForm.pinned}
+                  onChange={e => setNoteForm(f => ({ ...f, pinned: e.target.checked }))}
+                  className="rounded"
+                />
+                <span className="text-gray-700">📌 Pin note</span>
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={noteSubmitting}
+                className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-40"
+              >
+                {noteSubmitting ? 'Saving…' : noteEditId ? 'Save changes' : 'Add note'}
+              </button>
+              {noteEditId && (
+                <button
+                  type="button"
+                  onClick={() => { setNoteEditId(null); setNoteForm(EMPTY_NOTE_FORM) }}
+                  className="px-4 py-1.5 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* Notes list */}
+          {notesLoading ? (
+            <p className="text-gray-400 text-sm text-center py-4">Loading notes…</p>
+          ) : filteredNotes.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-4">
+              {notesList.length === 0 ? 'No notes yet. Add one above.' : 'No notes match the current filters.'}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filteredNotes.map(note => {
+                const isEdited = note.updated_at && note.updated_at !== note.created_at
+                return (
+                  <div
+                    key={note.note_id}
+                    className={`bg-white rounded border px-4 py-3 ${note.pinned ? 'border-l-4 border-l-amber-400' : ''}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      {note.pinned && <span className="text-amber-500 text-xs">📌</span>}
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded capitalize ${NOTE_TYPE_BADGE[note.note_type] || NOTE_TYPE_BADGE.general}`}>
+                        {note.note_type}
+                      </span>
+                      <span className="text-xs font-medium text-gray-700">{note.author}</span>
+                      <span className="text-xs text-gray-400">{relativeTime(note.created_at)}</span>
+                      {isEdited && <span className="text-xs text-gray-400">(edited {relativeTime(note.updated_at)})</span>}
+                      <div className="ml-auto flex gap-2">
+                        <button onClick={() => handleNoteEdit(note)} className="text-xs text-indigo-500 hover:underline">Edit</button>
+                        <button onClick={() => setNoteDeleteId(note.note_id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{note.text}</p>
+                    {note.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {note.tags.map(tag => (
+                          <span key={tag} className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">#{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -428,7 +830,7 @@ export default function CaseDetail() {
               </div>
               <div className="flex gap-3 items-center">
                 <a
-                  href={`/api/cases/${caseId}/cam`}
+                  href={downloadCAMUrl(caseId)}
                   download
                   className="inline-block px-4 py-2 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700 transition-colors"
                 >
