@@ -7,10 +7,12 @@
 
 ## Quick start (current build)
 
-> The system is implemented and working. Use these commands to run it.
+> The system is implemented and working. Phase 3 + Phase 4 complete.  
+> **Test baseline: 172+ tests pass.  Trace schema: v3.  Frontend: 37 modules.**
 
 ### Prerequisites
 - Ollama running with `sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest` at `http://172.23.112.1:11434`
+- Light model `qwen2.5:3b` available in Ollama (used by Router/Judge/ClaimGraph agents)
 - SearXNG Docker container running at `localhost:8888`
 - Python `.venv` activated: `source .venv/bin/activate`
 - Node 18+ for frontend dev
@@ -27,7 +29,15 @@ This starts the FastAPI backend on `http://localhost:8000` and the Vite dev serv
 # or directly:
 python -m pytest tests/ -v --tb=short
 ```
-Expected: **36/36 PASS**
+Expected: **172+ PASS** (Phase 3 + Phase 4 tests)
+
+### One-command judge pack (tests + showdown + scorecard)
+```bash
+./scripts/judge_pack.sh
+# skip long tests during iteration:
+./scripts/judge_pack.sh --skip-tests
+```
+Outputs: `reports/judge_scorecard.md`, `reports/judge_scorecard.json`, `reports/judge_pack.log`
 
 ### Frontend dev only
 ```bash
@@ -38,6 +48,13 @@ cd frontend && npm run dev
 ```bash
 source .venv/bin/activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Health check
+```bash
+curl http://localhost:8000/health        # alias
+curl http://localhost:8000/api/health    # canonical
+# Both return: {"status": "ok", "version": "3.0.0"}
 ```
 
 ---
@@ -81,7 +98,36 @@ action:
 - `DOMAIN_BLOCKLIST` in `services/agents/research_agent.py`: 26 domains that produce noise (Reddit, Cambridge Dictionary, Amazon, etc.). Add new noise domains here.
 - `DOMAIN_TIERS`: 25-entry confidence map. RBI/SEBI = 0.95; ET/BL = 0.75; default = 0.40.
 - `_entity_matches()`: requires full company name phrase OR ≥2 significant words (>4 chars) present in result text. This prevents "Apex Steel Ltd" matching recipe pages containing "steel".
-- Cache path: `storage/cache/research/<sanitized_company_name>_research.json`. Delete to force re-research.
+- Cache path: `storage/cache/research/<sanitized_company_name>_v3_research.json`. Delete to force re-research.
+- `CACHE_VERSION = "3"` — caches from earlier versions are automatically rejected and refreshed.
+- `stale_findings_marked` counter: stale items (regulatory/litigation from before 2021) are kept in findings but have `stale=True` and `risk_impact` prefixed with `"stale_"`.
+
+---
+
+## Phase 3 + Phase 4 implementation status
+
+### Agents (services/agents/)
+| Agent | File | Status |
+|---|---|---|
+| ResearchAgent | `research_agent.py` | Phase 3 — noise/stale hardened, CACHE_VERSION=3 |
+| ResearchRouterAgent | `research_router.py` | Phase 3 NEW — LLM search planner, deterministic fallback |
+| EvidenceJudgeAgent | `evidence_judge.py` | Phase 3 NEW — composite scorer, precision@10 fixed in Phase 4 |
+| ClaimGraph | `claim_graph.py` | Phase 3 NEW — claim extraction + contradiction detection |
+| CounterfactualChallenger | `counterfactual.py` | Phase 3 NEW — deterministic what-if scenarios |
+
+### Trace schema v3 (`schema_version: "v3"`)
+New keys: `research_plan`, `claim_graph`, `counterfactuals`, `evidence_judge`, `orchestration_mode`, `fallbacks_used`, `orchestration_impact`.  
+`v2_compat: True` preserved for backward-compatibility.
+
+### API additions (Phase 3/4)
+- `POST /api/cases/{case_id}/notes`, `GET /api/cases/{case_id}/notes` — officer notes
+- `GET /health` — alias for `/api/health` (Phase 4)
+- `GET /api/cases/{case_id}` now includes `officer_notes` array (Phase 4)
+- SSE contract: supplemental events (`research_plan_ready`, `evidence_scored`, `claim_graph_ready`, `counterfactual_ready`) are now emitted **before** `complete` (Phase 4 fix)
+
+### Frontend (Judge Mode)
+- `CaseDetail.jsx` — Judge tab appears when `schema_version === "v3"` after a run
+- Shows: Evidence Quality (precision@10, corroboration%), Claim Graph, Counterfactuals, Search Plan
 
 ---
 

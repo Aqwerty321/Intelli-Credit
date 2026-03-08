@@ -173,6 +173,8 @@ export default function CaseDetail() {
   const graphTrace = trace.graph_trace || null
   const research = caseData.research || {}
   const findings = research.findings || []
+  const hasRun = !!decision.recommendation
+
   // v3 extensions
   const isV3 = trace.schema_version === 'v3'
   const evidenceJudge = trace.evidence_judge || null
@@ -181,7 +183,6 @@ export default function CaseDetail() {
   const searchPlan = trace.research_plan || null
 
   const tabs = ['documents', 'run', 'evidence', 'trace', 'cam', ...(hasRun && isV3 ? ['judge'] : [])]
-  const hasRun = !!decision.recommendation
 
   return (
     <div>

@@ -93,13 +93,15 @@ class EvidenceJudgeAgent:
         accepted = [j for j in judged if j.accepted]
         rejected = [j for j in judged if not j.accepted]
 
-        # Sort accepted by composite score descending
+        # Sort accepted by composite score descending (for stable ranking display)
         accepted.sort(key=lambda j: j.composite_score, reverse=True)
 
-        # precision@10: fraction of top-10 that are accepted (or all if < 10)
-        total = len(judged)
+        # precision@10: rank ALL judged findings by composite score, take top-10,
+        # measure fraction that are accepted.  This is the standard IR metric.
+        judged_sorted_by_score = sorted(judged, key=lambda j: j.composite_score, reverse=True)
+        total = len(judged_sorted_by_score)
         top_n = min(10, total)
-        top_accepted = sum(1 for j in judged[:top_n] if j.accepted)
+        top_accepted = sum(1 for j in judged_sorted_by_score[:top_n] if j.accepted)
         precision_at_10 = top_accepted / top_n if top_n > 0 else 0.0
 
         # corroboration_rate

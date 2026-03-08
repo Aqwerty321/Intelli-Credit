@@ -48,6 +48,7 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
         emit("progress", {"phase": "research", "message": "Running secondary research..."})
         research_findings = []
         try:
+            from services.agents.research_router import ResearchRouterAgent
             from services.agents.research_agent import ResearchAgent
             agent = ResearchAgent()
             company_profile = {
@@ -57,7 +58,16 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
                 "promoters": meta.get("promoters", []),
                 "known_facts": [],
             }
-            result = agent.research_company(company_profile, use_cache=True)
+            # P2: generate research plan first, then use planned queries in execution
+            planned_queries = None
+            try:
+                router = ResearchRouterAgent()
+                plan = router.plan(company_profile, risk_hints=[])
+                planned_queries = [q.query for q in plan.queries]
+            except Exception:
+                pass  # fallback: research_agent will generate its own queries
+            result = agent.research_company(company_profile, use_cache=True,
+                                            planned_queries=planned_queries)
             research_findings = result.get("findings", [])
             # Save research to case dir
             with open(case_dir / f"{case_id}_research.json", "w") as f:
@@ -71,6 +81,16 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
 
         emit("progress", {"phase": "reasoning", "message": "Running rule engine and LLM..."})
 
+        # Load officer notes for context injection
+        officer_notes = []
+        notes_path = case_dir / "notes.json"
+        if notes_path.exists():
+            try:
+                with open(notes_path) as f:
+                    officer_notes = json.load(f)
+            except Exception:
+                pass
+
         # Run pipeline
         from services.pipeline import run_pipeline
         output_dir = str(case_dir)
@@ -81,6 +101,10 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
             loan_purpose=meta.get("loan_purpose", "Working Capital"),
             research_findings=research_findings,
             output_dir=output_dir,
+            sector=meta.get("sector", ""),
+            location=meta.get("location", ""),
+            promoters=meta.get("promoters", []),
+            officer_notes=officer_notes,
         )
 
         # Load generated trace
@@ -102,14 +126,8 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
         with open(meta_path, "w") as f:
             json.dump(current_meta, f, indent=2)
 
-        emit("complete", {
-            "recommendation": decision.get("recommendation"),
-            "risk_score": decision.get("risk_score"),
-            "rules_fired_count": len(trace.get("rule_firings", [])),
-            "schema_version": trace.get("schema_version", "v3"),
-        })
-
-        # v3 supplemental events (emitted after complete so UI can update panels)
+        # v3 supplemental events — emitted BEFORE complete so the Judge panel
+        # is populated before the UI transitions out of the running state.
         if trace.get("schema_version") == "v3":
             if trace.get("research_plan"):
                 rp = trace["research_plan"]
@@ -139,6 +157,13 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
                     "scenarios": cf.get("scenario_count", 0),
                     "top_scenario": cf.get("top_scenario"),
                 })
+
+        emit("complete", {
+            "recommendation": decision.get("recommendation"),
+            "risk_score": decision.get("risk_score"),
+            "rules_fired_count": len(trace.get("rule_firings", [])),
+            "schema_version": trace.get("schema_version", "v3"),
+        })
 
     except Exception as e:
         import traceback
@@ -217,6 +242,14 @@ def run_sync(case_id: str):
         print(f"Research failed (continuing): {e}")
 
     from services.pipeline import run_pipeline
+    officer_notes = []
+    notes_path = case_dir / "notes.json"
+    if notes_path.exists():
+        try:
+            with open(notes_path) as f:
+                officer_notes = json.load(f)
+        except Exception:
+            pass
     run_pipeline(
         input_files=input_files,
         company_name=meta["company_name"],
@@ -224,6 +257,10 @@ def run_sync(case_id: str):
         loan_purpose=meta.get("loan_purpose", "Working Capital"),
         research_findings=research_findings,
         output_dir=str(case_dir),
+        sector=meta.get("sector", ""),
+        location=meta.get("location", ""),
+        promoters=meta.get("promoters", []),
+        officer_notes=officer_notes,
     )
 
     # Load trace

@@ -136,6 +136,17 @@ def get_case(case_id: str):
         with open(research_files[-1]) as f:
             meta["research"] = json.load(f)
 
+    # Attach officer notes
+    notes_path = case_dir / "notes.json"
+    if notes_path.exists():
+        try:
+            with open(notes_path) as f:
+                meta["officer_notes"] = json.load(f)
+        except Exception:
+            meta["officer_notes"] = []
+    else:
+        meta["officer_notes"] = []
+
     # List uploaded docs
     docs_dir = case_dir / "docs"
     meta["documents"] = [f.name for f in docs_dir.iterdir() if not f.name.startswith(".")]

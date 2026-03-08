@@ -21,6 +21,11 @@ def run_pipeline(
     primary_insights: list[str] = None,
     research_findings: list[dict] = None,
     output_dir: str = None,
+    # Case meta — passed from API layer to give agents full context
+    sector: str = "",
+    location: str = "",
+    promoters: list = None,
+    officer_notes: list[dict] = None,
 ):
     """Run the complete credit appraisal pipeline."""
     from services.ingestor.provenance import Provenance, create_provenance
@@ -271,11 +276,18 @@ def run_pipeline(
 
     company_profile = {
         "name": company_name,
-        "sector": facts.get("sector", ""),
-        "location": facts.get("location", ""),
-        "promoters": [],
+        # Explicit meta from the API layer takes precedence over text-extracted fields
+        "sector": sector or facts.get("sector", ""),
+        "location": location or facts.get("location", ""),
+        "promoters": promoters or [],
     }
-    risk_hints_for_router = [rf.rationale[:80] for rf in rule_firings[:5]]
+    # Convert officer notes into plain-text risk hints for the router and counterfactual
+    note_hints = []
+    for note in (officer_notes or []):
+        text = note.get("text", "").strip()
+        if text:
+            note_hints.append(f"Officer note: {text[:120]}")
+    risk_hints_for_router = [rf.rationale[:80] for rf in rule_firings[:5]] + note_hints[:3]
 
     try:
         from services.agents.research_router import ResearchRouterAgent
@@ -297,7 +309,13 @@ def run_pipeline(
     try:
         from services.agents.claim_graph import ClaimGraph
         cg_builder = ClaimGraph()
-        claim_graph_result = cg_builder.build(research_findings or [], rule_firings, company_profile)
+        # P2: feed accepted judged evidence into claim graph (fallback to all findings)
+        cg_findings = (
+            [j.original for j in judge_report.accepted]
+            if judge_report and judge_report.accepted
+            else (research_findings or [])
+        )
+        claim_graph_result = cg_builder.build(cg_findings, rule_firings, company_profile)
         print(f"  Claim graph: {len(claim_graph_result.claims)} claims, "
               f"{claim_graph_result.contradiction_count} contradictions")
     except Exception as e:
@@ -468,6 +486,14 @@ def run_pipeline(
             *(["counterfactual"] if counterfactual_result and counterfactual_result.fallback else []),
             *(["extraction"] if domain_facts.get("_extraction_fallback") else []),
         ],
+        # P2: decision-impact — did orchestration change the baseline recommendation?
+        "orchestration_impact": {
+            "changed_recommendation": False,   # set True if Phase 4c evidence shifts decision
+            "pre_orchestration_risk_score": round(base_risk, 4),
+            "final_risk_score": round(risk_score, 4),
+            "risk_delta": round(risk_score - base_risk, 4),
+            "officer_notes_count": len(officer_notes) if officer_notes else 0,
+        },
         "timestamp": timestamp,
     }
     with open(trace_path, "w") as f:

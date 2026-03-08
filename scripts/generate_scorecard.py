@@ -145,16 +145,23 @@ def score_case(case: dict) -> dict:
     # ── 4. Schema Compliance ────────────────────────────────────────────────
     required_keys = ("schema_version", "rule_firings", "rules_fired_count", "decision", "graph_trace", "timestamp")
     present = [k for k in required_keys if k in trace]
-    schema_ok = trace.get("schema_version") == "v2"
+    schema_version = trace.get("schema_version", "")
+    schema_ok = schema_version in ("v2", "v3")
+    schema_is_v3 = schema_version == "v3"
     count_match = trace.get("rules_fired_count") == len(trace.get("rule_firings", []))
+    # v3 bonus: reward traces with new agent fields
+    v3_bonus_keys = ("research_plan", "claim_graph", "counterfactuals", "evidence_judge")
+    v3_present = sum(1 for k in v3_bonus_keys if trace.get(k) is not None)
 
     sch_score = 0
     sch_score += len(present) * 2  # up to 12 points
     sch_score += 3 if schema_ok else 0
+    sch_score += min(v3_present, 4) if schema_is_v3 else 0  # up to +4 bonus for v3 fields
     scores["schema"] = min(sch_score, 15)
     notes["schema"] = (
         f"present_keys={len(present)}/{len(required_keys)}, "
-        f"schema_v2={'✓' if schema_ok else '✗'}, count_match={'✓' if count_match else '✗'}"
+        f"schema={'✓' if schema_ok else '✗'}({schema_version}), "
+        f"v3_fields={v3_present}/4, count_match={'✓' if count_match else '✗'}"
     )
 
     # ── 5. Risk Calibration ─────────────────────────────────────────────────

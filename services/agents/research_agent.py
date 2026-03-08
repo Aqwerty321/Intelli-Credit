@@ -362,11 +362,16 @@ class ResearchAgent:
 
         return None
 
-    def research_company(self, company: dict, use_cache: bool = True) -> dict:
+    def research_company(self, company: dict, use_cache: bool = True,
+                          planned_queries: list[str] = None) -> dict:
         """
         Run full research workflow for a company.
         Returns structured research results with findings.
         Results are cached to storage/cache/research/ by company name.
+
+        Args:
+            planned_queries: Optional pre-built query list from ResearchRouterAgent.
+                             When supplied, step 1 (generate_search_queries) is skipped.
         """
         company_name = company.get("name", "Unknown")
         known_facts = set(company.get("known_facts", []))
@@ -392,9 +397,13 @@ class ResearchAgent:
         print(f"\n  [Research] Researching: {company_name}")
         t0 = time.time()
 
-        # Step 1: Generate search queries
-        queries = self.generate_search_queries(company)
-        print(f"  [Research] Generated {len(queries)} search queries")
+        # Step 1: Generate search queries (or use pre-built plan from ResearchRouterAgent)
+        if planned_queries:
+            queries = planned_queries
+            print(f"  [Research] Using {len(queries)} pre-planned queries from ResearchRouterAgent")
+        else:
+            queries = self.generate_search_queries(company)
+            print(f"  [Research] Generated {len(queries)} search queries")
 
         # Step 2: Execute web searches
         all_results = []
@@ -467,7 +476,10 @@ class ResearchAgent:
             "web_results_found": len(all_results),
             "findings": unique_findings,
             "corroborated_findings": sum(1 for f in unique_findings if not f.get("insufficient_corroboration")),
-            "stale_findings_dropped": sum(1 for f in unique_findings if f.get("stale")),
+            # stale items are kept in findings but flagged with stale=True and
+            # risk_impact prefixed "stale_"; stale_findings_dropped is a legacy alias.
+            "stale_findings_marked": sum(1 for f in unique_findings if f.get("stale")),
+            "stale_findings_dropped": sum(1 for f in unique_findings if f.get("stale")),  # backward-compat alias
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }
