@@ -171,6 +171,17 @@ class ResearchAgent:
                 return score
         return 0.40  # default for unlisted domains
 
+    def _source_tier(self, domain_confidence: float) -> str:
+        """Map a domain confidence score to a human-readable tier label."""
+        if domain_confidence >= 0.90:
+            return "authoritative"
+        elif domain_confidence >= 0.70:
+            return "credible"
+        elif domain_confidence >= 0.50:
+            return "general"
+        else:
+            return "low"
+
     def _entity_matches(self, company: dict, text: str) -> bool:
         """
         Return True if text references the company or its sector.
@@ -256,6 +267,8 @@ class ResearchAgent:
                             "category": analysis.get("category", "general"),
                             "risk_impact": analysis.get("risk_impact", "neutral"),
                             "confidence": max(analysis.get("confidence", 0.5), domain_conf),
+                            "relevance_score": max(analysis.get("confidence", 0.5), domain_conf),
+                            "source_tier": self._source_tier(domain_conf),
                             "sentiment_score": -0.6 if analysis.get("risk_impact") == "negative" else
                                                0.4 if analysis.get("risk_impact") == "positive" else 0.0,
                             "corroborated": True,
@@ -305,6 +318,8 @@ class ResearchAgent:
                 "category": "general",
                 "risk_impact": "negative",
                 "confidence": domain_conf,
+                "relevance_score": domain_conf,
+                "source_tier": self._source_tier(domain_conf),
                 "sentiment_score": -0.4,
                 "corroborated": True,
                 "novel": is_novel,
@@ -376,40 +391,21 @@ class ResearchAgent:
                 seen_summaries.add(summary_key)
                 unique_findings.append(f)
 
-        # Step 5: Guarantee minimum findings — if keyword/LLM analysis missed,
-        # promote sector-relevant search results as findings
-        if len(unique_findings) < 3 and all_results:
-            sector = company.get("sector", "").lower()
-            for r in all_results:
-                if len(unique_findings) >= 3:
-                    break
-                title = r.get("title", "")
-                snippet = r.get("snippet", "")
-                if not snippet or len(snippet) < 20:
-                    continue
-                summary_key = title[:50].lower()
-                if summary_key in seen_summaries:
-                    continue
-                # Accept any result whose title/snippet references the sector
-                combined = (title + " " + snippet).lower()
-                if sector and sector in combined:
-                    seen_summaries.add(summary_key)
-                    is_novel = not any(
-                        known.lower() in (title + snippet).lower()
-                        for known in known_facts
-                    )
-                    unique_findings.append({
-                        "summary": f"{title}: {snippet[:120]}",
-                        "source": r.get("url", ""),
-                        "source_title": title,
-                        "category": "sector",
-                        "risk_impact": "neutral",
-                        "confidence": 0.3,
-                        "corroborated": True,
-                        "novel": is_novel,
-                        "raw_snippet": snippet[:200],
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
+        # Step 5: Corroboration — downgrade unverified single-source high-impact claims
+        category_counts: dict[str, int] = {}
+        for f in unique_findings:
+            cat = f.get("category", "general")
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+        for f in unique_findings:
+            cat = f.get("category", "general")
+            count = category_counts.get(cat, 1)
+            f["corroboration_count"] = count
+            if cat in ("litigation", "fraud") and count < 2:
+                f["insufficient_corroboration"] = True
+                if f.get("risk_impact") == "negative":
+                    f["risk_impact"] = "unverified"
+            else:
+                f["insufficient_corroboration"] = False
 
         elapsed = time.time() - t0
         print(f"  [Research] Found {len(unique_findings)} relevant findings in {elapsed:.1f}s")
@@ -419,6 +415,7 @@ class ResearchAgent:
             "queries_executed": len(queries),
             "web_results_found": len(all_results),
             "findings": unique_findings,
+            "corroborated_findings": sum(1 for f in unique_findings if not f.get("insufficient_corroboration")),
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }

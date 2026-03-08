@@ -173,11 +173,17 @@ def run_pipeline(
         "sector_sentiment_score": sector_sentiment,
         "evidence_count": len(negative_findings),
     }
+    minimum_risk_policy = []
     for k, v in defaults.items():
         if k not in domain_facts:
             facts[k] = v
+            minimum_risk_policy.append({
+                "field": k,
+                "default_value": round(v, 4) if isinstance(v, float) else v,
+                "reason": "Not found in uploaded documents — conservative default applied",
+            })
     facts.update(domain_facts)
-    print(f"  Facts assembled: {len(facts)} keys")
+    print(f"  Facts assembled: {len(facts)} keys ({len(minimum_risk_policy)} defaults applied)")
     for k, v in sorted(facts.items()):
         if k != "company_name":
             print(f"    {k}: {v}")
@@ -324,12 +330,14 @@ def run_pipeline(
     trace_path = os.path.join(output_dir, f"{cam_id}_trace.json")
     trace = {
         "cam_id": cam_id,
+        "schema_version": "v2",
         "decision": {
             "recommendation": recommendation,
             "risk_score": risk_score,
             "recommended_amount": recommended_amount,
         },
-        "rules_fired": [rf.to_dict() for rf in rule_firings],
+        "rule_firings": [rf.to_dict() for rf in rule_firings],
+        "rules_fired_count": len(rule_firings),
         "risk_adjustments": [
             {
                 "rule_id": rf.rule_id,
@@ -338,15 +346,21 @@ def run_pipeline(
             }
             for rf in rule_firings
         ],
-        "fraud_alerts": [
-            {
-                "type": a.alert_type,
-                "severity": a.severity,
-                "entities": a.entities,
-                "risk_score": a.risk_score,
-            }
-            for a in fraud_alerts
-        ],
+        "minimum_risk_policy": minimum_risk_policy,
+        "graph_trace": {
+            "edges_examined": graph_builder.get_edge_count(),
+            "suspicious_cycles": sum(1 for a in fraud_alerts if a.alert_type == "cycle"),
+            "fraud_alerts": [
+                {
+                    "type": a.alert_type,
+                    "severity": a.severity,
+                    "entities": a.entities,
+                    "risk_score": a.risk_score,
+                }
+                for a in fraud_alerts
+            ],
+            "no_graph_evidence": graph_builder.get_edge_count() == 0 and not fraud_alerts,
+        },
         "llm_trace": llm_trace if llm_trace else None,
         "timestamp": timestamp,
     }
@@ -359,7 +373,7 @@ def run_pipeline(
         log_provenance(conn, "cam_generated", "cam", cam_id, "pipeline", {
             "recommendation": recommendation,
             "risk_score": risk_score,
-            "rules_fired": len(rule_firings),
+            "rules_fired_count": len(rule_firings),
         })
         conn.commit()
     except Exception:

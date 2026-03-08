@@ -105,7 +105,8 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
         emit("complete", {
             "recommendation": decision.get("recommendation"),
             "risk_score": decision.get("risk_score"),
-            "rules_fired": len(trace.get("rule_firings", [])),
+            "rules_fired_count": len(trace.get("rule_firings", [])),
+            "schema_version": trace.get("schema_version", "v2"),
         })
 
     except Exception as e:
@@ -214,5 +215,6 @@ def run_sync(case_id: str):
         "case_id": case_id,
         "recommendation": decision.get("recommendation"),
         "risk_score": decision.get("risk_score"),
-        "rules_fired": len(trace.get("rule_firings", [])),
+        "rules_fired_count": len(trace.get("rule_firings", [])),
+        "schema_version": trace.get("schema_version", "v2"),
     }
