@@ -1,20 +1,18 @@
 {
   "gstin": [],
   "pan": [
-    "SITAB7467R"
+    "YAQHJ1198Y"
   ],
   "invoice_total": [
-    "34310611",
-    "4536906",
-    "47313877"
+    "13864243",
+    "18396807",
+    "32869436"
   ],
   "date": [
-    "14/03/2024",
-    "01/05/2024",
-    "01/01/2025"
+    "08/10/2023"
   ],
-  "cmr_rank": 4,
+  "cmr_rank": 5,
   "max_dpd": 0,
-  "dishonoured_cheques": 6,
+  "dishonoured_cheques": 2,
   "document_type": "CIBIL Commercial Report"
 }

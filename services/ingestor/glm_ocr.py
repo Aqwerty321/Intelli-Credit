@@ -5,13 +5,14 @@ Converts document PDFs/images to structured Markdown with provenance.
 Usage:
   python glm_ocr.py --input-dir <dir_with_images> --output-dir <output> --source-file <original.pdf>
 
-Backend priority: PyMuPDF text extraction -> Ollama vision -> Tesseract fallback
+Backend priority: PyMuPDF text extraction -> PaddleOCR-VL (GPU) -> Tesseract fallback
 """
 import argparse
 import base64
 import io
 import json
 import os
+import re as _re
 import sys
 import glob
 import urllib.request
@@ -22,12 +23,105 @@ from typing import Optional
 
 OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://172.23.112.1:11434")
 GLM_OCR_MODEL = os.environ.get("GLM_OCR_MODEL", "glm-ocr:bf16")
+PADDLE_OCR_MODEL_ID = "strangervisionhf/PaddleOCR-VL-1.5-hf-transformers-v5.2.0.dev0"
 
 OCR_PROMPT = (
     "Convert this document page to structured Markdown. "
     "Preserve all text, tables, numbers, dates, and identifiers exactly. "
     "Use proper Markdown formatting for headings, tables, and lists."
 )
+
+# ---------------------------------------------------------------------------
+# PaddleOCR-VL singleton (loaded once, reused across calls)
+# ---------------------------------------------------------------------------
+_paddle_model = None
+_paddle_processor = None
+
+
+def preload_ocr_model():
+    """Pre-load PaddleOCR-VL into GPU memory (call once at startup)."""
+    global _paddle_model, _paddle_processor
+    if _paddle_model is not None:
+        return
+    try:
+        import torch
+        from transformers import AutoProcessor
+        from transformers.models.paddleocr_vl import PaddleOCRVLForConditionalGeneration
+
+        print(f"[OCR] Loading PaddleOCR-VL model ({PADDLE_OCR_MODEL_ID})...")
+        _paddle_processor = AutoProcessor.from_pretrained(PADDLE_OCR_MODEL_ID)
+        _paddle_model = PaddleOCRVLForConditionalGeneration.from_pretrained(
+            PADDLE_OCR_MODEL_ID,
+            dtype=torch.bfloat16,
+            device_map="cuda",
+        )
+        print("[OCR] PaddleOCR-VL loaded successfully.")
+    except Exception as e:
+        print(f"[OCR] Failed to load PaddleOCR-VL: {e}", file=sys.stderr)
+        _paddle_model = None
+        _paddle_processor = None
+
+
+def unload_ocr_model():
+    """Free PaddleOCR-VL from GPU memory (call before loading LLM)."""
+    global _paddle_model, _paddle_processor
+    if _paddle_model is not None:
+        del _paddle_model
+        _paddle_model = None
+    if _paddle_processor is not None:
+        del _paddle_processor
+        _paddle_processor = None
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+
+def _paddleocr_vl_ocr(img_bytes: bytes) -> str:
+    """Run OCR on a PNG image using PaddleOCR-VL (GPU, bfloat16)."""
+    global _paddle_model, _paddle_processor
+    try:
+        import torch
+        from PIL import Image
+
+        if _paddle_model is None:
+            preload_ocr_model()
+        if _paddle_model is None:
+            return ""
+
+        image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": OCR_PROMPT},
+                ],
+            }
+        ]
+        prompt = _paddle_processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = _paddle_processor(
+            text=[prompt], images=[image], return_tensors="pt"
+        ).to("cuda")
+
+        generated_ids = _paddle_model.generate(**inputs, max_new_tokens=2048)
+        trimmed = [
+            out[len(inp):]
+            for inp, out in zip(inputs.input_ids, generated_ids)
+        ]
+        raw_text = _paddle_processor.batch_decode(trimmed, skip_special_tokens=True)[0]
+
+        # Strip bounding-box location tags
+        clean = _re.sub(r"<\|LOC_\d+\|>", "", raw_text)
+        return clean.strip()
+    except Exception as e:
+        print(f"[OCR] PaddleOCR-VL inference failed: {e}", file=sys.stderr)
+        return ""
 
 
 def ocr_document(pdf_path: str, output_dir: str = None) -> dict:
@@ -54,14 +148,13 @@ def ocr_document(pdf_path: str, output_dir: str = None) -> dict:
             # Text-based PDF - PyMuPDF extraction works
             page_texts.append(text)
         else:
-            # Scanned/image PDF - try vision OCR
-            method = "ollama-vision"
+            # Scanned/image PDF - try PaddleOCR-VL first, then tesseract
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("png")
-            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
 
-            ocr_text = _ollama_vision_ocr(img_b64)
+            ocr_text = _paddleocr_vl_ocr(img_bytes)
             if ocr_text and len(ocr_text) > 10:
+                method = "paddleocr-vl"
                 page_texts.append(ocr_text)
             else:
                 # Fallback to tesseract

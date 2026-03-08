@@ -16,10 +16,12 @@ PAN_PATTERN = re.compile(
     r'\b([A-Z]{5}\d{4}[A-Z])\b'
 )
 
-# Invoice total: various Indian currency formats (₹, Rs., INR)
+# Invoice total: various Indian currency formats (₹, Rs., INR) + bare Indian-format numbers
+# Third alternation: Indian lakhs/crores pattern requiring at least X,XX,XXX (6+ digits)
 INVOICE_TOTAL_PATTERN = re.compile(
     r'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)'
-    r'|(?:Total|Amount|Grand\s*Total|Net\s*Amount)\s*[:\s]*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)',
+    r'|(?:Total|Amount|Grand\s*Total|Net\s*Amount)\s*[:\s]*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)'
+    r'|\b(\d{1,2},\d{2}(?:,\d{2})*,\d{3}(?:\.\d{1,2})?)\b',
     re.IGNORECASE
 )
 
@@ -70,9 +72,10 @@ def extract_invoice_totals(text: str) -> list[str]:
     """Extract all invoice/amount totals from text."""
     results = []
     for match in INVOICE_TOTAL_PATTERN.finditer(text):
-        value = match.group(1) or match.group(2)
+        value = match.group(1) or match.group(2) or match.group(3)
         if value:
-            results.append(value.replace(',', ''))
+            raw = value.replace(',', '')
+            results.append(raw)
     return results
 
 

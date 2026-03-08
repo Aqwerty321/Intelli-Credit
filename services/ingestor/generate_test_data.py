@@ -174,7 +174,7 @@ def generate_bank_statement_pdf(output_dir: str, sample_id: str) -> dict:
     account = ''.join(random.choices(string.digits, k=14))
     ifsc = ''.join(random.choices(string.ascii_uppercase, k=4)) + '0' + ''.join(random.choices(string.digits, k=6))
     dates = [random_date() for _ in range(10)]
-    amounts = [random_amount(5000, 2000000) for _ in range(10)]
+    amounts = [random_amount(100000, 2000000) for _ in range(10)]
 
     c.setFont("Helvetica-Bold", 14)
     c.drawString(30 * mm, h - 25 * mm, random.choice(["State Bank of India", "HDFC Bank", "ICICI Bank", "Punjab National Bank"]))
@@ -239,7 +239,7 @@ def generate_bank_statement_pdf(output_dir: str, sample_id: str) -> dict:
         "gstin": [],
         "pan": [pan],
         "invoice_total": [a.replace(',', '') for a in txn_amounts],
-        "date": txn_dates,
+        "date": [dates[0], dates[1]] + txn_dates,
         "document_type": "Bank Statement",
     }
 
@@ -316,7 +316,7 @@ def generate_cibil_report_pdf(output_dir: str, sample_id: str) -> dict:
         "gstin": [],
         "pan": [pan],
         "invoice_total": [a.replace(',', '') for a in amounts],
-        "date": dates,
+        "date": [dates[0]],
         "cmr_rank": cmr,
         "max_dpd": dpd,
         "dishonoured_cheques": dishonoured,
