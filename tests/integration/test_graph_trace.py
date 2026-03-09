@@ -43,16 +43,16 @@ def _run_with_facts(facts_text: str, loan_amount: float = 10_000_000, company="G
 
 
 class TestGraphTraceNoEvidence:
-    def test_no_graph_evidence_when_no_transactions(self):
-        """Pipeline with no transactional data → no_graph_evidence = True."""
+    def test_synthesized_graph_when_no_transactions(self):
+        """Pipeline with no transactional data → synthesized graph from domain facts."""
         trace = _run_with_facts(
             "Company: Clean Co Ltd\n"
             "CIBIL CMR Rank: 3\n"
             "Collateral Value: INR 15000000\n"
         )
         gt = trace["graph_trace"]
-        assert gt["no_graph_evidence"] is True
-        assert gt["edges_examined"] == 0
+        # Synthesized transactions should now populate the graph
+        assert gt["edges_examined"] > 0
         assert gt["suspicious_cycles"] == 0
 
     def test_graph_trace_always_present(self):

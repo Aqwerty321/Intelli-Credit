@@ -128,18 +128,29 @@ class ResearchAgent:
         promoters = company.get("promoters", [])
         promoter_names = [p.get("name", "") for p in promoters if p.get("name")]
 
-        # Always generate basic queries even without LLM
+        # Core company queries
         queries = [
             f'"{name}" news India',
             f'"{name}" legal case India',
+            f'"{name}" financial results revenue profit',
+            f'"{name}" GST compliance GSTIN India',
+            f'"{name}" CIBIL credit history India',
+            f'"{name}" fraud allegation investigation India',
+        ]
+
+        # Sector queries
+        queries += [
             f'{sector} sector India news 2024 2025',
             f'{sector} industry India regulatory compliance risks',
             f'{sector} India market outlook growth forecast',
             f'{sector} manufacturing India government policy',
+            f'{sector} India supply chain disruption risk 2024',
         ]
 
+        # Promoter queries
         for pname in promoter_names:
             queries.append(f'"{pname}" director India litigation fraud')
+            queries.append(f'"{pname}" India company board MCA filings')
 
         if location:
             queries.append(f'{sector} {location} India industry news')
@@ -151,19 +162,23 @@ class ResearchAgent:
                 f"Sector: {sector}\n"
                 f"Location: {location}\n"
                 f"Promoters: {', '.join(promoter_names)}\n\n"
-                f"Generate 4 specific web search queries to find:\n"
+                f"Generate 8 specific web search queries to find:\n"
                 f"1. Legal disputes or litigation involving the company or promoters\n"
-                f"2. Regulatory actions (RBI, SEBI, MCA filings)\n"
+                f"2. Regulatory actions (RBI, SEBI, MCA filings, NCLT cases)\n"
                 f"3. Sector-specific headwinds or tailwinds\n"
-                f"4. News about financial health or fraud allegations\n\n"
+                f"4. News about financial health or fraud allegations\n"
+                f"5. Bank NPA or wilful defaulter listings\n"
+                f"6. Related party transactions or circular trading\n"
+                f"7. Environmental or labour compliance issues\n"
+                f"8. Competitor landscape or market share changes\n\n"
                 f"Output ONLY the queries, one per line. No numbering, no explanation."
             )
             try:
-                resp = self.engine.generate(prompt, max_tokens=256, temperature=0.3)
+                resp = self.engine.generate(prompt, max_tokens=400, temperature=0.3)
                 if resp.answer and "[ERROR" not in resp.answer:
                     text = resp.answer if resp.answer else resp.raw_text
                     llm_queries = [q.strip().strip('"').strip("'") for q in text.strip().split('\n') if q.strip() and len(q.strip()) > 10]
-                    queries.extend(llm_queries[:4])
+                    queries.extend(llm_queries[:8])
             except Exception as e:
                 print(f"  [Research] LLM query generation failed: {e}")
 

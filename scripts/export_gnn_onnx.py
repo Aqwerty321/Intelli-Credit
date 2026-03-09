@@ -47,9 +47,11 @@ class DenseGNNForExport(nn.Module):
 
     def __init__(self, in_channels=7, hidden_channels=24, out_channels=5):
         super().__init__()
-        # Mirror GCNConv weight matrices
-        self.weight1 = nn.Linear(in_channels, hidden_channels, bias=True)
-        self.weight2 = nn.Linear(hidden_channels, hidden_channels, bias=True)
+        # Mirror GCNConv weight matrices — lin (no bias) + separate bias
+        self.lin1 = nn.Linear(in_channels, hidden_channels, bias=False)
+        self.bias1 = nn.Parameter(torch.zeros(hidden_channels))
+        self.lin2 = nn.Linear(hidden_channels, hidden_channels, bias=False)
+        self.bias2 = nn.Parameter(torch.zeros(hidden_channels))
         # MLP head (same as DemoGraphNet.head)
         self.head = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels),
@@ -58,52 +60,59 @@ class DenseGNNForExport(nn.Module):
         )
 
     def forward(self, x, adj):
-        # GCN layer 1: A_hat @ X @ W1
-        x = torch.matmul(adj, x)
-        x = self.weight1(x)
+        # GCN layer 1: lin(X) first, then propagate via adj, then bias
+        x = self.lin1(x)        # [N, hidden] — weight transform
+        x = torch.matmul(adj, x)  # [N, hidden] — neighborhood aggregation
+        x = x + self.bias1
         x = torch.relu(x)
-        # GCN layer 2: A_hat @ H @ W2
+        # GCN layer 2
+        x = self.lin2(x)
         x = torch.matmul(adj, x)
-        x = self.weight2(x)
+        x = x + self.bias2
         x = torch.relu(x)
         # Global mean pool
         x = x.mean(dim=0, keepdim=True)  # [1, hidden]
         return self.head(x)  # [1, out_channels]
 
 
-def _gcnconv_to_dense(conv_layer, linear_layer):
-    """Transfer weights from GCNConv to a nn.Linear layer."""
-    # GCNConv stores weights as .lin.weight [out, in]
+def _gcnconv_to_dense(conv_layer, lin_layer, bias_param):
+    """Transfer weights from GCNConv to the dense model's lin + bias."""
     with torch.no_grad():
+        # GCNConv stores weights as .lin.weight [out, in] (no bias in lin)
         if hasattr(conv_layer, 'lin'):
-            linear_layer.weight.copy_(conv_layer.lin.weight)
-            if conv_layer.bias is not None:
-                linear_layer.bias.copy_(conv_layer.bias)
-            elif linear_layer.bias is not None:
-                linear_layer.bias.zero_()
+            lin_layer.weight.copy_(conv_layer.lin.weight)
         else:
-            linear_layer.weight.copy_(conv_layer.weight)
-            if conv_layer.bias is not None:
-                linear_layer.bias.copy_(conv_layer.bias)
-            elif linear_layer.bias is not None:
-                linear_layer.bias.zero_()
+            lin_layer.weight.copy_(conv_layer.weight)
+        # GCNConv has a separate .bias parameter
+        if conv_layer.bias is not None:
+            bias_param.copy_(conv_layer.bias)
+        else:
+            bias_param.zero_()
 
 
 def build_normalized_adjacency(edge_index, num_nodes):
-    """Build D^-0.5 A_hat D^-0.5 from edge_index (with self-loops)."""
+    """Build GCNConv-compatible normalized adjacency from edge_index.
+
+    Replicates PyG's GCNConv normalization exactly:
+    1. Add self-loops
+    2. Compute degree of A_hat
+    3. adj[dst, src] = d_inv_sqrt[dst] * d_inv_sqrt[src]
+    """
     adj = torch.zeros(num_nodes, num_nodes)
-    # Add self-loops
-    for i in range(num_nodes):
-        adj[i, i] = 1.0
-    # Add edges
-    for i in range(edge_index.shape[1]):
-        src, dst = int(edge_index[0, i]), int(edge_index[1, i])
-        adj[src, dst] = 1.0
-    # Symmetric normalization: D^-0.5 A D^-0.5
-    degree = adj.sum(dim=1)
-    d_inv_sqrt = torch.where(degree > 0, degree.pow(-0.5), torch.zeros_like(degree))
-    d_mat = torch.diag(d_inv_sqrt)
-    return d_mat @ adj @ d_mat
+    # Add self-loops to edge_index
+    self_loops = torch.arange(num_nodes, dtype=torch.long).unsqueeze(0).repeat(2, 1)
+    ei_hat = torch.cat([edge_index, self_loops], dim=1)
+    # Compute degree (count incoming edges for each node in dst)
+    deg = torch.zeros(num_nodes)
+    for k in range(ei_hat.shape[1]):
+        deg[int(ei_hat[1, k])] += 1.0
+    d_inv_sqrt = deg.pow(-0.5)
+    d_inv_sqrt[d_inv_sqrt == float('inf')] = 0
+    # Fill adjacency: message flows from src to dst
+    for k in range(ei_hat.shape[1]):
+        src, dst = int(ei_hat[0, k]), int(ei_hat[1, k])
+        adj[dst, src] += d_inv_sqrt[dst] * d_inv_sqrt[src]
+    return adj
 
 
 def main():
@@ -114,8 +123,8 @@ def main():
     dense_model = DenseGNNForExport(in_channels=7, hidden_channels=24, out_channels=5)
 
     # Transfer weights
-    _gcnconv_to_dense(source_model.conv1, dense_model.weight1)
-    _gcnconv_to_dense(source_model.conv2, dense_model.weight2)
+    _gcnconv_to_dense(source_model.conv1, dense_model.lin1, dense_model.bias1)
+    _gcnconv_to_dense(source_model.conv2, dense_model.lin2, dense_model.bias2)
     with torch.no_grad():
         dense_model.head[0].weight.copy_(source_model.head[0].weight)
         dense_model.head[0].bias.copy_(source_model.head[0].bias)

@@ -434,9 +434,17 @@ class RuleEngine:
         evidence_count = int(facts.get("evidence_count", 0))
         if sentiment < sent_threshold and evidence_count >= min_evidence:
             risk_adj = float(action.get("risk_adjustment", 0.1))
+            sector_name = facts.get("sector", facts.get("sector_name", "the borrower's sector"))
             return (
                 True,
-                {sent_field: sentiment, "evidence_count": evidence_count},
+                {
+                    sent_field: sentiment,
+                    "evidence_count": evidence_count,
+                    "sentiment_score": f"{sentiment:.2f}",
+                    "sector_name": sector_name,
+                    "headwind_summary": f"negative sentiment ({sentiment:.2f})",
+                    "key_factors": "adverse research findings",
+                },
                 f"Negative sector sentiment {sentiment:.2f} with {evidence_count} corroborating sources",
                 risk_adj, [],
             )

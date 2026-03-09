@@ -49,36 +49,38 @@ async function ensureSession() {
 }
 
 /**
- * Build normalized adjacency matrix (D^-0.5 A_hat D^-0.5) from edge_index.
- * edge_index: [[src...], [dst...]]
- * numNodes: int
+ * Build GCNConv-compatible normalized adjacency matrix from edge_index.
+ * Replicates PyG's GCNConv normalization:
+ * 1. Add self-loops
+ * 2. Compute degree from A_hat (counting dst)
+ * 3. adj[dst, src] = d_inv_sqrt[dst] * d_inv_sqrt[src]
  */
 function buildNormalizedAdjacency(edgeIndex, numNodes) {
-  const adj = new Float32Array(numNodes * numNodes)
-  // Self-loops
-  for (let i = 0; i < numNodes; i++) adj[i * numNodes + i] = 1.0
-  // Edges
   const [srcs, dsts] = edgeIndex
-  for (let i = 0; i < srcs.length; i++) {
-    adj[srcs[i] * numNodes + dsts[i]] = 1.0
-  }
-  // Compute degree
-  const degree = new Float32Array(numNodes)
+  // Build combined edge list with self-loops
+  const allSrcs = [...srcs]
+  const allDsts = [...dsts]
   for (let i = 0; i < numNodes; i++) {
-    let sum = 0
-    for (let j = 0; j < numNodes; j++) sum += adj[i * numNodes + j]
-    degree[i] = sum
+    allSrcs.push(i)
+    allDsts.push(i)
   }
-  // D^-0.5 A D^-0.5
-  const result = new Float32Array(numNodes * numNodes)
+  // Compute degree (count edges into each dst node)
+  const deg = new Float32Array(numNodes)
+  for (let i = 0; i < allSrcs.length; i++) {
+    deg[allDsts[i]] += 1.0
+  }
+  const dInvSqrt = new Float32Array(numNodes)
   for (let i = 0; i < numNodes; i++) {
-    for (let j = 0; j < numNodes; j++) {
-      const di = degree[i] > 0 ? Math.pow(degree[i], -0.5) : 0
-      const dj = degree[j] > 0 ? Math.pow(degree[j], -0.5) : 0
-      result[i * numNodes + j] = di * adj[i * numNodes + j] * dj
-    }
+    dInvSqrt[i] = deg[i] > 0 ? Math.pow(deg[i], -0.5) : 0
   }
-  return result
+  // Fill adjacency: adj[dst, src] += d_inv_sqrt[dst] * d_inv_sqrt[src]
+  const adj = new Float32Array(numNodes * numNodes)
+  for (let i = 0; i < allSrcs.length; i++) {
+    const src = allSrcs[i]
+    const dst = allDsts[i]
+    adj[dst * numNodes + src] += dInvSqrt[dst] * dInvSqrt[src]
+  }
+  return adj
 }
 
 /**

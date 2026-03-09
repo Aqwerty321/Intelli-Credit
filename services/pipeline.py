@@ -60,6 +60,95 @@ def _normalize_transaction_rows(data: object) -> list[dict]:
     return normalized
 
 
+def _synthesize_transactions(
+    company_name: str,
+    domain_facts: dict,
+    loan_amount: float,
+    promoters: list,
+    research_findings: list,
+) -> list[dict]:
+    """Synthesize a basic cash-flow graph from extracted domain facts.
+
+    Creates realistic transaction flows between the borrower, bank,
+    suppliers, and buyers so the GNN and D3.js graph are always populated.
+    """
+    txns = []
+    turnover = domain_facts.get("gst_declared_turnover", loan_amount * 3)
+    bank_credits = domain_facts.get("bank_statement_credits", turnover * 1.05)
+    collateral = domain_facts.get("collateral_value", loan_amount * 1.5)
+
+    short_name = company_name.split()[0] if company_name else "Borrower"
+    bank_name = f"{short_name} Bank Account"
+
+    # Supplier inflows (purchases → borrower)
+    supplier_count = max(2, min(4, int(turnover / (loan_amount or 1))))
+    per_supplier = turnover / supplier_count
+    for i in range(supplier_count):
+        supplier = f"Supplier-{chr(65 + i)}"
+        txns.append({
+            "transaction_id": f"synth_sup_{i}",
+            "source": supplier,
+            "target": company_name,
+            "amount": round(per_supplier * (0.8 + 0.1 * i), 2),
+            "type": "GST_INVOICE",
+            "source_role": "supplier",
+            "target_role": "borrower",
+        })
+
+    # Buyer outflows (borrower → buyers)
+    buyer_count = max(2, min(3, supplier_count - 1))
+    per_buyer = bank_credits / buyer_count
+    for i in range(buyer_count):
+        buyer = f"Buyer-{chr(65 + i)}"
+        txns.append({
+            "transaction_id": f"synth_buy_{i}",
+            "source": company_name,
+            "target": buyer,
+            "amount": round(per_buyer * (0.9 + 0.05 * i), 2),
+            "type": "GST_INVOICE",
+            "source_role": "borrower",
+            "target_role": "buyer",
+        })
+
+    # Bank loan disbursement
+    txns.append({
+        "transaction_id": "synth_loan_disburse",
+        "source": bank_name,
+        "target": company_name,
+        "amount": loan_amount,
+        "type": "LOAN_DISBURSEMENT",
+        "source_role": "bank",
+        "target_role": "borrower",
+    })
+
+    # Collateral pledge
+    if collateral > 0:
+        txns.append({
+            "transaction_id": "synth_collateral",
+            "source": company_name,
+            "target": bank_name,
+            "amount": collateral,
+            "type": "COLLATERAL_PLEDGE",
+            "source_role": "borrower",
+            "target_role": "bank",
+        })
+
+    # Promoter equity / related-party flows
+    for i, p in enumerate(promoters[:2]):
+        pname = p.get("name", f"Promoter-{i+1}")
+        txns.append({
+            "transaction_id": f"synth_promoter_{i}",
+            "source": pname,
+            "target": company_name,
+            "amount": round(loan_amount * 0.3 / max(1, len(promoters[:2])), 2),
+            "type": "EQUITY_INFUSION",
+            "source_role": "related_party",
+            "target_role": "borrower",
+        })
+
+    return txns
+
+
 def _transactions_from_graph_builder(graph_builder) -> list[dict]:
     rows = []
     for source, target, attrs in graph_builder.graph.edges(data=True):
@@ -302,6 +391,29 @@ def run_pipeline(
                 f"  Graph wired from documents: {graph_builder.get_edge_count()} edges "
                 f"({len(unique_gstins)} GSTINs, cycle_detected={cycle_from_text})"
             )
+
+        # If still no graph edges, synthesize cash-flow topology from domain facts
+        if graph_builder.get_edge_count() == 0:
+            synth_txns = _synthesize_transactions(
+                company_name, domain_facts, loan_amount, promoters or [],
+                research_findings or [],
+            )
+            for txn in synth_txns:
+                graph_builder.add_transaction(
+                    txn["source"], txn["target"],
+                    amount=txn["amount"],
+                    txn_type=txn.get("type", "GST_INVOICE"),
+                    metadata={
+                        txn["source"]: {"role": txn.get("source_role", "borrower")},
+                        txn["target"]: {"role": txn.get("target_role", "supplier")},
+                    },
+                )
+            if synth_txns:
+                graph_evidence_source = "synthesized_from_facts"
+                print(
+                    f"  Graph synthesized from facts: {len(synth_txns)} edges "
+                    f"({graph_builder.get_node_count()} nodes)"
+                )
 
     fraud_alerts = graph_builder.run_all_detections()
     graph_transactions = loaded_transactions or _transactions_from_graph_builder(graph_builder)

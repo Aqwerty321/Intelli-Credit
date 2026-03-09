@@ -48,34 +48,44 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
         emit("progress", {"phase": "research", "message": "Running secondary research..."})
         research_findings = []
         try:
-            from services.agents.research_router import ResearchRouterAgent
-            from services.agents.research_agent import ResearchAgent
-            agent = ResearchAgent()
-            company_profile = {
-                "name": meta.get("company_name", ""),
-                "sector": meta.get("sector", ""),
-                "location": meta.get("location", ""),
-                "promoters": meta.get("promoters", []),
-                "known_facts": [],
-            }
-            # P2: generate research plan first, then use planned queries in execution
-            planned_queries = None
-            try:
-                router = ResearchRouterAgent()
-                plan = router.plan(company_profile, risk_hints=[])
-                planned_queries = [q.query for q in plan.queries]
-            except Exception:
-                pass  # fallback: research_agent will generate its own queries
-            result = agent.research_company(company_profile, use_cache=True,
-                                            planned_queries=planned_queries)
-            research_findings = result.get("findings", [])
-            # Save research to case dir
-            with open(case_dir / f"{case_id}_research.json", "w") as f:
-                json.dump(result, f, indent=2)
-            emit("research_complete", {
-                "findings_count": len(research_findings),
-                "negative_count": sum(1 for f in research_findings if f.get("risk_impact") == "negative"),
-            })
+            # Check if AutoFetch already saved research for this case
+            existing_research = case_dir / f"{case_id}_research.json"
+            if existing_research.exists():
+                with open(existing_research) as f:
+                    cached_result = json.load(f)
+                research_findings = cached_result.get("findings", [])
+                emit("research_complete", {
+                    "findings_count": len(research_findings),
+                    "negative_count": sum(1 for f in research_findings if f.get("risk_impact") == "negative"),
+                    "source": "autofetch",
+                })
+            else:
+                from services.agents.research_router import ResearchRouterAgent
+                from services.agents.research_agent import ResearchAgent
+                agent = ResearchAgent()
+                company_profile = {
+                    "name": meta.get("company_name", ""),
+                    "sector": meta.get("sector", ""),
+                    "location": meta.get("location", ""),
+                    "promoters": meta.get("promoters", []),
+                    "known_facts": [],
+                }
+                planned_queries = None
+                try:
+                    router = ResearchRouterAgent()
+                    plan = router.plan(company_profile, risk_hints=[])
+                    planned_queries = [q.query for q in plan.queries]
+                except Exception:
+                    pass
+                result = agent.research_company(company_profile,
+                                                planned_queries=planned_queries)
+                research_findings = result.get("findings", [])
+                with open(existing_research, "w") as f:
+                    json.dump(result, f, indent=2)
+                emit("research_complete", {
+                    "findings_count": len(research_findings),
+                    "negative_count": sum(1 for f in research_findings if f.get("risk_impact") == "negative"),
+                })
         except Exception as e:
             emit("warning", {"message": f"Research failed (continuing): {e}"})
 
@@ -226,19 +236,26 @@ def run_sync(case_id: str):
 
     research_findings = []
     try:
-        from services.agents.research_agent import ResearchAgent
-        agent = ResearchAgent()
-        company_profile = {
-            "name": meta.get("company_name", ""),
-            "sector": meta.get("sector", ""),
-            "location": meta.get("location", ""),
-            "promoters": meta.get("promoters", []),
-            "known_facts": [],
-        }
-        result = agent.research_company(company_profile, use_cache=True)
-        research_findings = result.get("findings", [])
-        with open(case_dir / f"{case_id}_research.json", "w") as f:
-            json.dump(result, f, indent=2)
+        # Check if research already exists for this case (from autofetch or cache placement)
+        existing_research = case_dir / f"{case_id}_research.json"
+        if existing_research.exists():
+            with open(existing_research) as f:
+                cached_result = json.load(f)
+            research_findings = cached_result.get("findings", [])
+        else:
+            from services.agents.research_agent import ResearchAgent
+            agent = ResearchAgent()
+            company_profile = {
+                "name": meta.get("company_name", ""),
+                "sector": meta.get("sector", ""),
+                "location": meta.get("location", ""),
+                "promoters": meta.get("promoters", []),
+                "known_facts": [],
+            }
+            result = agent.research_company(company_profile, use_cache=True)
+            research_findings = result.get("findings", [])
+            with open(case_dir / f"{case_id}_research.json", "w") as f:
+                json.dump(result, f, indent=2)
     except Exception as e:
         print(f"Research failed (continuing): {e}")
 

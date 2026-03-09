@@ -160,7 +160,7 @@ class TestV3DomainFactExtraction:
         assert dpd_firings, "No DPD rule fired despite max DPD=45 in document"
 
     def test_no_spurious_cycle_detection(self, v3_trace):
-        """Document has no circular trading language; graph should have no edges."""
+        """Document has no circular trading language; graph should have no suspicious cycles."""
         gt = v3_trace["graph_trace"]
-        assert gt["edges_examined"] == 0
-        assert gt["no_graph_evidence"] is True
+        assert gt["suspicious_cycles"] == 0
+        assert len(gt.get("fraud_alerts", [])) == 0

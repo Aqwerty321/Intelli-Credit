@@ -4,22 +4,37 @@ Provides unified SQL + vector query interface.
 """
 import os
 import json
+import time
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import duckdb
 
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DB_PATH = PROJECT_ROOT / "storage" / "lakehouse.duckdb"
 
+_MAX_RETRIES = 5
+_RETRY_DELAY = 1.0  # seconds
+
 
 def get_connection(db_path: Optional[str] = None) -> duckdb.DuckDBPyConnection:
-    """Get a DuckDB connection."""
+    """Get a DuckDB connection with retry on lock contention."""
     path = db_path or str(DB_PATH)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    return duckdb.connect(path)
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return duckdb.connect(path)
+        except duckdb.IOException as e:
+            if "Conflicting lock" in str(e) and attempt < _MAX_RETRIES - 1:
+                logger.warning("DuckDB lock contention (attempt %d/%d), retrying in %.1fs...",
+                               attempt + 1, _MAX_RETRIES, _RETRY_DELAY)
+                time.sleep(_RETRY_DELAY)
+            else:
+                raise
 
 
 def init_schema(conn: Optional[duckdb.DuckDBPyConnection] = None) -> None:

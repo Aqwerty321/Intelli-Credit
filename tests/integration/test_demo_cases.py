@@ -137,6 +137,20 @@ def run_cases(client, manifest):
     created_cases: list[str] = []
     results: dict[str, dict] = {}
 
+    # Pre-test cleanup: delete stale cases from previous interrupted runs
+    manifest_companies = {cfg["company_name"] for cfg in manifest}
+    r = client.get("/api/cases/")
+    if r.status_code == 200:
+        for existing in r.json():
+            if existing.get("company_name") in manifest_companies:
+                client.delete(f"/api/cases/{existing['case_id']}")
+    # Also clean stale research caches
+    for cfg in manifest:
+        safe = _sanitize(cfg["company_name"])
+        cache_file = CACHE_DIR / f"{safe}_v3_research.json"
+        if cache_file.exists():
+            cache_file.unlink()
+
     for cfg in manifest:
         label = cfg["case_label"]
         folder = base_dir / cfg["folder"]
@@ -164,6 +178,13 @@ def run_cases(client, manifest):
         assert r.status_code == 201, f"[{label}] create failed: {r.text}"
         case_id = r.json()["case_id"]
         created_cases.append(case_id)
+
+        # Also place research cache in the case directory so the pipeline
+        # finds it at {case_id}_research.json (bypasses disabled agent cache)
+        if cache_src.exists():
+            case_dir = PROJECT_ROOT / "storage" / "cases" / case_id
+            case_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cache_src, case_dir / f"{case_id}_research.json")
 
         # Upload markdown docs
         for doc_rel in cfg["documents"]:
