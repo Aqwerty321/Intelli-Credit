@@ -70,8 +70,8 @@ class FactsGenerator:
         self.engine = None
         self.llm_available = False
         try:
-            from services.cognitive.engine import CognitiveEngine, DEEPSEEK_MODEL
-            self.engine = CognitiveEngine(model=DEEPSEEK_MODEL)
+            from services.cognitive.engine import CognitiveEngine, LIGHT_MODEL
+            self.engine = CognitiveEngine(model=LIGHT_MODEL)
             self.llm_available = self.engine.is_alive()
         except Exception:
             pass

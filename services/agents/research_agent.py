@@ -336,23 +336,7 @@ class ResearchAgent:
         company_name = company.get("name", "Unknown")
         known_facts = set(company.get("known_facts", []))
 
-        # Check cache
-        cache_dir = PROJECT_ROOT / "storage" / "cache" / "research"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = re.sub(r'[^\w]', '_', company_name.lower())[:60]
-        cache_file = cache_dir / f"{safe_name}_v{CACHE_VERSION}_research.json"
-        if use_cache and cache_file.exists():
-            try:
-                with open(cache_file) as f:
-                    cached = json.load(f)
-                # Reject caches from older versions
-                if cached.get("cache_version") == CACHE_VERSION:
-                    print(f"  [Research] Cache hit: {cache_file.name} ({len(cached.get('findings', []))} findings)")
-                    return cached
-                else:
-                    print(f"  [Research] Cache version mismatch — refreshing ({cache_file.name})")
-            except Exception:
-                pass  # Cache corrupt, proceed with fresh research
+        # Cache disabled — always fetch fresh results
 
         print(f"\n  [Research] Researching: {company_name}")
         t0 = time.time()
@@ -443,13 +427,6 @@ class ResearchAgent:
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }
-
-        # Write cache
-        try:
-            with open(cache_file, "w") as f:
-                json.dump(result, f, indent=2)
-        except Exception:
-            pass
 
         return result
 
