@@ -141,6 +141,16 @@ class FactsGenerator:
             f"Sector: {sector}\n"
             f"Location: {location}\n"
             f"Loan Amount: ₹{_fmt_inr(loan_amount)} ({loan_purpose})\n\n"
+            f"=== REASONABLE DEFAULT VALUES (use unless research contradicts) ===\n"
+            f"CMR Rank: 4/10 (moderate, adjust up if negatives found)\n"
+            f"Max DPD: 0 days (increase only if research shows payment delays)\n"
+            f"Dishonoured Cheques: 0\n"
+            f"GST Turnover: ₹{_fmt_inr(int(loan_amount * 3))} (3x loan amount)\n"
+            f"Bank Credits: ₹{_fmt_inr(int(loan_amount * 3.15))} (should be >= GST turnover)\n"
+            f"ITC Available (GSTR-2A): INR {int(loan_amount * 0.27)} (9% of turnover)\n"
+            f"ITC Claimed (GSTR-3B): INR {int(loan_amount * 0.27)} (should be close to 2A)\n"
+            f"Capacity Utilization: 75%\n"
+            f"Collateral Value: ₹{int(loan_amount * 1.5)} (1.5x loan amount)\n\n"
             f"=== RESEARCH FINDINGS ({len(findings)} items) ===\n"
             f"{findings_text}\n\n"
             f"=== REQUIRED OUTPUT FORMAT ===\n"
@@ -167,9 +177,10 @@ class FactsGenerator:
             f"[Add ## Legal & Regulatory Status if negative findings exist]\n\n"
             f"## Assessment Summary\n"
             f"[2-4 sentence assessment based on all findings]\n\n"
-            f"Fill in the ? values based on the research findings. Use [ESTIMATED] marker "
-            f"for any values you infer rather than find directly. Output ONLY the markdown "
-            f"document, no additional commentary."
+            f"Fill in the ? values. Use the REASONABLE DEFAULTS above as a starting point "
+            f"and adjust based on research findings. CRITICAL: Bank Credits must be >= GST "
+            f"Turnover. Collateral must be >= loan amount. Mark estimated values with [ESTIMATED]. "
+            f"Output ONLY the markdown document, no additional commentary."
         )
 
         try:
@@ -222,23 +233,26 @@ class FactsGenerator:
         lit_findings = [f for f in findings if f.get("category") in ("litigation", "fraud")]
         reg_findings = [f for f in findings if f.get("category") == "regulatory"]
 
-        # CMR estimation: base 5, +1 per negative finding (cap at 9)
-        cmr = min(9, 5 + neg_count)
-        if neg_count == 0:
-            cmr = 4  # slightly favorable if no negatives found
-            risk_cat = "Moderate Risk"
-        elif neg_count <= 2:
+        # CMR estimation: base 4, modestly adjust for serious negatives only
+        fraud_count = sum(1 for f in findings if f.get("category") in ("fraud", "litigation"))
+        cmr = min(8, 4 + fraud_count)  # only litigation/fraud move CMR, not general negatives
+        if fraud_count == 0:
+            cmr = 3 if neg_count == 0 else 4
+            risk_cat = "Low Risk" if neg_count == 0 else "Moderate Risk"
+        elif fraud_count <= 2:
             risk_cat = "Medium Risk"
-        elif neg_count <= 4:
+        elif fraud_count <= 4:
             risk_cat = "High Risk"
         else:
             risk_cat = "Critical Risk"
 
-        # DPD estimation based on litigation/negative signals
+        # DPD estimation — only if direct payment delay/default signals exist
         dpd = 0
-        if lit_findings:
-            dpd = min(90, len(lit_findings) * 30)
-        dishonoured = min(5, len(lit_findings))
+        dpd_keywords = ("dpd", "default", "npa", "overdue", "delay")
+        dpd_findings = [f for f in findings if any(k in f.get("summary", "").lower() for k in dpd_keywords)]
+        if dpd_findings:
+            dpd = min(60, len(dpd_findings) * 15)
+        dishonoured = min(3, sum(1 for f in lit_findings if "cheque" in f.get("summary", "").lower() or "dishonour" in f.get("summary", "").lower()))
 
         # Financial estimates based on loan amount
         gst_turnover = int(loan_amount * 3)
