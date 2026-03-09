@@ -10,6 +10,8 @@ import {
   deleteCase,
   runSync,
   streamRunUrl,
+  checkFactsExist,
+  autofetchStreamUrl,
 } from '../services/api'
 import {
   asNumber,
@@ -31,6 +33,7 @@ import TracePanel from './panels/TracePanel'
 import CAMPanel from './panels/CAMPanel'
 import JudgePanel from './panels/JudgePanel'
 import GraphPanel from './panels/GraphPanel'
+import ConfirmModal from './ConfirmModal'
 
 export default function CaseDetail() {
   const { caseId } = useParams()
@@ -68,6 +71,12 @@ export default function CaseDetail() {
   // Case delete
   const [showDeleteCase, setShowDeleteCase] = useState(false)
 
+  // AutoFetch
+  const [autoFetching, setAutoFetching] = useState(false)
+  const [autoFetchLog, setAutoFetchLog] = useState([])
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
+  const autoFetchEsRef = useRef(null)
+
   const reload = useCallback(() =>
     getCase(caseId).then(setCaseData).catch(() => {}), [caseId])
 
@@ -80,6 +89,7 @@ export default function CaseDetail() {
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [log])
   useEffect(() => { if (tab === 'notes') reloadNotes() }, [tab, reloadNotes])
   useEffect(() => () => { if (esRef.current) { esRef.current.close(); esRef.current = null } }, [])
+  useEffect(() => () => { if (autoFetchEsRef.current) { autoFetchEsRef.current.close(); autoFetchEsRef.current = null } }, [])
   useEffect(() => {
     if (presentationMode && tab === 'documents') setTab('trace')
   }, [presentationMode, tab])
@@ -143,6 +153,48 @@ export default function CaseDetail() {
   const handleDeleteCase = async () => {
     await deleteCase(caseId)
     navigate('/')
+  }
+
+  const startAutoFetch = (force = false) => {
+    if (autoFetchEsRef.current) { autoFetchEsRef.current.close(); autoFetchEsRef.current = null }
+    setAutoFetching(true)
+    setAutoFetchLog([])
+    setTab('documents')
+    const es = new EventSource(autofetchStreamUrl(caseId, force))
+    autoFetchEsRef.current = es
+    const addLog = (data) => setAutoFetchLog(l => [...l, data])
+    es.addEventListener('progress', e => addLog(JSON.parse(e.data)))
+    es.addEventListener('research_complete', e => addLog({ phase: 'research_complete', ...JSON.parse(e.data) }))
+    es.addEventListener('complete', e => {
+      addLog({ phase: 'DONE', ...JSON.parse(e.data) })
+      setAutoFetching(false)
+      es.close(); autoFetchEsRef.current = null
+      reload()
+    })
+    es.addEventListener('error', e => {
+      const data = typeof e.data === 'string' ? e.data : 'Connection error'
+      addLog({ phase: 'ERROR', message: data })
+      setAutoFetching(false)
+      es.close(); autoFetchEsRef.current = null
+    })
+  }
+
+  const handleAutoFetch = async () => {
+    try {
+      const { facts_exists } = await checkFactsExist(caseId)
+      if (facts_exists) {
+        setShowOverwriteConfirm(true)
+      } else {
+        startAutoFetch(false)
+      }
+    } catch {
+      startAutoFetch(false)
+    }
+  }
+
+  const handleOverwriteConfirm = () => {
+    setShowOverwriteConfirm(false)
+    startAutoFetch(true)
   }
 
   const handleNoteSubmit = async (e) => {
@@ -274,7 +326,37 @@ export default function CaseDetail() {
 
       {/* Panel content */}
       {tab === 'documents' && (
-        <DocumentsPanel documents={caseData.documents} uploading={uploading} fileRef={fileRef} onUpload={handleUpload} />
+        <>
+          <DocumentsPanel
+            documents={caseData.documents} uploading={uploading} fileRef={fileRef} onUpload={handleUpload}
+            onAutoFetch={presentationMode ? undefined : handleAutoFetch}
+            autoFetching={autoFetching}
+          />
+          {autoFetchLog.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-semibold text-slate-700 mb-2">AutoFetch Log</h3>
+              <div className="bg-slate-950 text-green-300 rounded p-3 h-44 overflow-y-auto font-mono text-[11px] space-y-0.5">
+                {autoFetchLog.map((l, i) => (
+                  <div key={i} className={l.phase === 'ERROR' ? 'text-red-400' : l.phase === 'DONE' ? 'text-blue-300' : ''}>
+                    {l.phase === 'DONE' ? `✓ AutoFetch complete — ${l.filename} (${l.findings_count} findings, ${l.generation_method})` :
+                     l.phase === 'ERROR' ? `✗ ${l.message || 'AutoFetch failed'}` :
+                     l.phase === 'research_complete' ? `◆ Research done: ${l.findings_count} findings (${l.negative_count} negative)` :
+                     `▸ ${l.message || JSON.stringify(l)}`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <ConfirmModal
+            open={showOverwriteConfirm}
+            title="Overwrite facts.md?"
+            message="A facts.md document already exists for this case. AutoFetch will overwrite it with fresh research data."
+            confirmLabel="Overwrite"
+            danger
+            onConfirm={handleOverwriteConfirm}
+            onCancel={() => setShowOverwriteConfirm(false)}
+          />
+        </>
       )}
 
       {tab === 'run' && (

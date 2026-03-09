@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.cases import router as cases_router
 from app.api.run import router as run_router
+from app.api.autofetch import router as autofetch_router
 
 app = FastAPI(
     title="Intelli-Credit API",
@@ -32,6 +33,7 @@ app.add_middleware(
 
 app.include_router(cases_router, prefix="/api/cases", tags=["cases"])
 app.include_router(run_router, prefix="/api/run", tags=["run"])
+app.include_router(autofetch_router, prefix="/api/autofetch", tags=["autofetch"])
 
 
 def _health_response():

@@ -73,6 +73,16 @@ export const runSync = (caseId) =>
 export const streamRunUrl = (caseId) =>
   `/api/run/${caseId}/stream`
 
+// ── AutoFetch ────────────────────────────────────────────────────────────────
+
+/** Check if facts.md already exists for a case. */
+export const checkFactsExist = (caseId) =>
+  _request('GET', `/api/autofetch/${caseId}/check`)
+
+/** Returns an EventSource URL for autofetch streaming. */
+export const autofetchStreamUrl = (caseId, force = false) =>
+  `/api/autofetch/${caseId}/stream?force=${force}`
+
 // ── Health ───────────────────────────────────────────────────────────────────
 
 export const getHealth = () =>
