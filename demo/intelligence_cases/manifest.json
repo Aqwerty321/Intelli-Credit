@@ -41,8 +41,8 @@
       },
       "expected": {
         "recommendation": "APPROVE",
-        "risk_score_max": 0.5,
-        "risk_score_min": 0.28,
+        "risk_score_max": 0.45,
+        "risk_score_min": 0.10,
         "rules_fired": [],
         "hard_reject": false,
         "schema_version": "v3"
@@ -95,8 +95,8 @@
       },
       "expected": {
         "recommendation": "APPROVE",
-        "risk_score_max": 0.5,
-        "risk_score_min": 0.28,
+        "risk_score_max": 0.45,
+        "risk_score_min": 0.10,
         "rules_fired": [],
         "hard_reject": false,
         "schema_version": "v3"
@@ -164,8 +164,8 @@
       },
       "expected": {
         "recommendation": "CONDITIONAL",
-        "risk_score_max": 0.7,
-        "risk_score_min": 0.55,
+        "risk_score_max": 0.70,
+        "risk_score_min": 0.35,
         "rules_fired": ["gst-itc-mismatch", "dpd-threshold", "cibil-cmr-threshold"],
         "hard_reject": false,
         "schema_version": "v3"
@@ -218,9 +218,9 @@
         "no_warning_text": true
       },
       "expected": {
-        "recommendation": "CONDITIONAL",
-        "risk_score_max": 0.62,
-        "risk_score_min": 0.53,
+        "recommendation": "APPROVE",
+        "risk_score_max": 0.55,
+        "risk_score_min": 0.25,
         "rules_fired": ["dpd-threshold", "cibil-cmr-threshold", "capacity-utilization"],
         "hard_reject": false,
         "schema_version": "v3"

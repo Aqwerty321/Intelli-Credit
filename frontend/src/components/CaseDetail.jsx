@@ -404,6 +404,7 @@ export default function CaseDetail() {
           minRiskPolicy={minRiskPolicy}
           presentationMode={presentationMode}
           baseRisk={trace.orchestration_impact?.pre_orchestration_risk_score ?? 0}
+          llmTrace={trace.llm_trace}
         />
       )}
 

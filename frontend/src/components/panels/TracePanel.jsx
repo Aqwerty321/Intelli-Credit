@@ -24,7 +24,7 @@ function CollapsibleInputs({ inputs }) {
   )
 }
 
-export default function TracePanel({ graphTrace, graphProbabilities, graphTopEntities, firings, minRiskPolicy, presentationMode, baseRisk = 0 }) {
+export default function TracePanel({ graphTrace, graphProbabilities, graphTopEntities, firings, minRiskPolicy, presentationMode, baseRisk = 0, llmTrace }) {
   return (
     <div className="space-y-3">
       {/* Graph trace */}
@@ -112,7 +112,7 @@ export default function TracePanel({ graphTrace, graphProbabilities, graphTopEnt
           Rule Firings <span className="text-[11px] text-slate-400 font-normal">({firings.length})</span>
         </h2>
         {!firings.length ? (
-          <p className="text-slate-400 text-xs">Run the appraisal first.</p>
+          <p className="text-slate-400 text-xs italic">No rules triggered — all thresholds within safe limits.</p>
         ) : (
           <div className="bg-white border border-slate-200 rounded divide-y divide-slate-100">
             {firings.map((rf, i) => (
@@ -152,6 +152,25 @@ export default function TracePanel({ graphTrace, graphProbabilities, graphTopEnt
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* LLM Risk Assessment */}
+      {llmTrace && llmTrace.answer && (
+        <div className="bg-white border border-slate-200 rounded px-3 py-3">
+          <h3 className="text-xs font-semibold text-slate-700 mb-2">LLM Risk Assessment</h3>
+          <div className="flex gap-2 text-[11px] text-slate-400 mb-2">
+            <span className="bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-mono">{llmTrace.model}</span>
+            <span>{llmTrace.tokens_used} tokens</span>
+            <span>{(llmTrace.latency_ms / 1000).toFixed(1)}s</span>
+          </div>
+          {llmTrace.thinking && (
+            <details className="mb-2">
+              <summary className="text-[11px] text-brand cursor-pointer hover:underline">Show reasoning chain</summary>
+              <pre className="mt-1 text-[11px] text-slate-600 bg-slate-50 rounded p-2 whitespace-pre-wrap max-h-60 overflow-y-auto">{llmTrace.thinking}</pre>
+            </details>
+          )}
+          <pre className="text-[11px] text-slate-700 bg-slate-50 rounded p-2 whitespace-pre-wrap max-h-40 overflow-y-auto">{llmTrace.answer}</pre>
         </div>
       )}
     </div>

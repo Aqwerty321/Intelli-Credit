@@ -70,10 +70,13 @@ class ResearchRouterAgent:
         sector = company.get("sector", "")
         location = company.get("location", "")
         promoters = [p.get("name", "") for p in company.get("promoters", []) if p.get("name")]
+        loan_amount = str(company.get("loan_amount", ""))
+        loan_purpose = company.get("loan_purpose", "")
         risk_hints = risk_hints or []
 
         if self.llm_available:
-            plan = self._llm_plan(name, sector, location, promoters, risk_hints)
+            plan = self._llm_plan(name, sector, location, promoters, risk_hints,
+                                  loan_amount, loan_purpose)
             if plan:
                 return plan
 
@@ -84,17 +87,31 @@ class ResearchRouterAgent:
     # ------------------------------------------------------------------
 
     def _llm_plan(self, name: str, sector: str, location: str,
-                  promoters: list[str], risk_hints: list[str]) -> Optional[SearchPlan]:
+                  promoters: list[str], risk_hints: list[str],
+                  loan_amount: str = "", loan_purpose: str = "") -> Optional[SearchPlan]:
         hints_text = "\n".join(f"- {h}" for h in risk_hints) if risk_hints else "None"
+        financial_ctx = ""
+        if loan_amount:
+            financial_ctx += f"Loan Amount: ₹{loan_amount}\n"
+        if loan_purpose:
+            financial_ctx += f"Loan Purpose: {loan_purpose}\n"
         prompt = (
-            "You are a credit research analyst. Produce a JSON search plan to investigate "
+            "You are a senior credit research analyst. Produce a JSON search plan to investigate "
             f"'{name}' ({sector}, {location}) for a loan application.\n\n"
+            f"{financial_ctx}"
             f"Rule-engine risk hints fired:\n{hints_text}\n\n"
             "Return ONLY valid JSON with this structure:\n"
             '{"queries": [{"query": "...", "focus_area": "litigation|sector|promoter|regulatory|financial", '
             '"priority": 1, "rationale": "one short sentence"}], '
             '"focus_areas": ["litigation", ...]}\n\n'
-            "Generate 5–8 targeted, non-redundant queries. Priority 1=critical, 2=important, 3=nice-to-have."
+            "Generate 8–12 targeted, non-redundant queries covering:\n"
+            "- NCLT/DRT proceedings, court cases\n"
+            "- RBI/SEBI/MCA regulatory actions\n"
+            "- Wilful defaulter or NPA listings\n"
+            "- Promoter background and criminal records\n"
+            "- Sector-specific risks and policy changes\n"
+            "- Financial health indicators\n"
+            "Priority 1=critical, 2=important, 3=nice-to-have."
         )
         try:
             resp = self.engine.generate(prompt, max_tokens=512, temperature=0.2)
@@ -132,20 +149,29 @@ class ResearchRouterAgent:
                              promoters: list[str], risk_hints: list[str]) -> SearchPlan:
         queries: list[SearchQuery] = []
 
-        # Always: company news + legal
+        # Always: company news + legal + regulatory
         queries.append(SearchQuery(f'"{name}" India news 2024 2025', "sector", 1))
         queries.append(SearchQuery(f'"{name}" legal case India', "litigation", 1))
+        queries.append(SearchQuery(f'"{name}" NCLT insolvency India', "litigation", 1))
+        queries.append(SearchQuery(f'"{name}" wilful defaulter NPA India', "financial", 1))
+        queries.append(SearchQuery(f'"{name}" MCA filings ROC India', "regulatory", 2))
+        queries.append(SearchQuery(f'"{name}" credit rating India', "financial", 2))
 
         # Sector signals
         if sector:
             queries.append(SearchQuery(f'{sector} India regulatory news 2024', "regulatory", 2))
             queries.append(SearchQuery(f'{sector} India market outlook headwinds', "sector", 2))
+            queries.append(SearchQuery(f'{sector} India NPA stressed sector RBI', "sector", 2))
 
         # Promoter background
-        for pname in promoters[:2]:
+        for pname in promoters[:3]:
             queries.append(SearchQuery(
                 f'"{pname}" director India fraud litigation', "promoter", 1,
                 "Background check on promoter"
+            ))
+            queries.append(SearchQuery(
+                f'"{pname}" disqualified director wilful defaulter India', "promoter", 1,
+                "Defaulter check on promoter"
             ))
 
         # Risk-hint driven

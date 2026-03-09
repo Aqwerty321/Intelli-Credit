@@ -68,6 +68,8 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
                     "sector": meta.get("sector", ""),
                     "location": meta.get("location", ""),
                     "promoters": meta.get("promoters", []),
+                    "loan_amount": meta.get("loan_amount", ""),
+                    "loan_purpose": meta.get("loan_purpose", ""),
                     "known_facts": [],
                 }
                 planned_queries = None
@@ -250,6 +252,8 @@ def run_sync(case_id: str):
                 "sector": meta.get("sector", ""),
                 "location": meta.get("location", ""),
                 "promoters": meta.get("promoters", []),
+                "loan_amount": meta.get("loan_amount", ""),
+                "loan_purpose": meta.get("loan_purpose", ""),
                 "known_facts": [],
             }
             result = agent.research_company(company_profile, use_cache=True)

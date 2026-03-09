@@ -588,11 +588,47 @@ def run_pipeline(
     # ========================================================================
     print("\n--- Phase 5: CAM Generation ---")
 
-    # Compute aggregate risk score
-    base_risk = 0.3
+    # Compute aggregate risk score from multiple signal sources
+    # 1. Start with a neutral base
+    base_risk = 0.15
+
+    # 2. LLM risk classification adjustment
+    llm_risk_adj = 0.0
+    if llm_assessment and llm_assessment.answer:
+        try:
+            import re as _re
+            _json_match = _re.search(r'\{[\s\S]*\}', llm_assessment.answer)
+            if _json_match:
+                _llm_json = json.loads(_json_match.group())
+                _llm_class = str(_llm_json.get('risk_classification', '')).upper()
+                llm_risk_adj = {
+                    'LOW': 0.0, 'MEDIUM': 0.10, 'HIGH': 0.25, 'CRITICAL': 0.40,
+                }.get(_llm_class, 0.10)
+        except (json.JSONDecodeError, Exception):
+            llm_risk_adj = 0.10  # default MEDIUM if parse fails
+    else:
+        llm_risk_adj = 0.10  # no LLM → assume MEDIUM baseline
+    base_risk += llm_risk_adj
+
+    # 3. GNN graph risk signal
+    if graph_inference and graph_inference.label != 'clean':
+        gnn_adj = {
+            'ring': 0.15, 'star_seller': 0.08,
+            'dense_cluster': 0.12, 'layered_chain': 0.05,
+        }.get(graph_inference.label, 0.05)
+        # Only apply GNN adjustment for non-synthesized graphs
+        if graph_evidence_source != 'synthesized_from_facts':
+            base_risk += gnn_adj
+
+    # 4. Evidence quality signal (negative findings)
+    negative_research = [f for f in (research_findings or []) if f.get('risk_impact') == 'negative']
+    if len(negative_research) >= 3:
+        base_risk += 0.05
+
+    # 5. Rule engine adjustments
     for rf in rule_firings:
         base_risk += rf.risk_adjustment
-    risk_score = min(1.0, base_risk)
+    risk_score = min(1.0, max(0.0, round(base_risk, 4)))
 
     # Determine recommendation
     hard_reject = any(rf.hard_reject for rf in rule_firings)

@@ -110,6 +110,8 @@ def _autofetch_thread(case_id: str, meta: dict, force: bool,
             "sector": meta.get("sector", ""),
             "location": meta.get("location", ""),
             "promoters": meta.get("promoters", []),
+            "loan_amount": meta.get("loan_amount", ""),
+            "loan_purpose": meta.get("loan_purpose", ""),
             "known_facts": [],
         }
 

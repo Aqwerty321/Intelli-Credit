@@ -51,9 +51,15 @@ export default function GraphPanel({ caseId, graphTrace }) {
   const gnnLabel = topology?.gnn_label || graphTrace?.gnn_label || 'clean'
   const classProbabilities = topology?.class_probabilities || graphTrace?.class_probabilities || {}
   const transactions = graphTrace?.graph_transactions || []
+  const isSynthesized = graphTrace?.evidence_source === 'synthesized_from_facts'
 
   return (
     <div ref={containerRef} className="space-y-3">
+      {isSynthesized && (
+        <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-xs text-blue-700">
+          <span className="font-semibold">Synthesized graph</span> — cash-flow topology generated from domain facts (turnover, bank credits, promoters). Upload transaction documents for real transaction analysis.
+        </div>
+      )}
       {/* Force-directed network graph */}
       <ForceGraph
         nodes={nodes}

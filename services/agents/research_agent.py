@@ -65,7 +65,7 @@ DOMAIN_BLOCKLIST: set[str] = {
 # SearXNG web search (self-hosted, real results from multiple engines)
 # ---------------------------------------------------------------------------
 
-def web_search(query: str, max_results: int = 8) -> list[dict]:
+def web_search(query: str, max_results: int = 15) -> list[dict]:
     """
     Search the web using self-hosted SearXNG meta-search engine.
     Returns list of {url, title, snippet}.
@@ -127,8 +127,12 @@ class ResearchAgent:
         location = company.get("location", "")
         promoters = company.get("promoters", [])
         promoter_names = [p.get("name", "") for p in promoters if p.get("name")]
+        loan_amount = company.get("loan_amount", "")
+        loan_purpose = company.get("loan_purpose", "")
+        turnover = company.get("turnover", "")
+        gst_details = company.get("gst_details", "")
 
-        # Core company queries
+        # Core company queries — broad coverage
         queries = [
             f'"{name}" news India',
             f'"{name}" legal case India',
@@ -136,49 +140,79 @@ class ResearchAgent:
             f'"{name}" GST compliance GSTIN India',
             f'"{name}" CIBIL credit history India',
             f'"{name}" fraud allegation investigation India',
+            # Regulatory / corporate governance
+            f'"{name}" MCA filings ROC annual return India',
+            f'"{name}" NCLT NCLAT insolvency India',
+            f'"{name}" wilful defaulter RBI CIBIL India',
+            f'"{name}" tax evasion income tax GST India',
+            f'"{name}" promoter pledge shares India',
         ]
 
-        # Sector queries
-        queries += [
-            f'{sector} sector India news 2024 2025',
-            f'{sector} industry India regulatory compliance risks',
-            f'{sector} India market outlook growth forecast',
-            f'{sector} manufacturing India government policy',
-            f'{sector} India supply chain disruption risk 2024',
-        ]
+        # Sector queries — broader set
+        if sector:
+            queries += [
+                f'{sector} sector India news 2024 2025',
+                f'{sector} industry India regulatory compliance risks',
+                f'{sector} India market outlook growth forecast',
+                f'{sector} manufacturing India government policy',
+                f'{sector} India supply chain disruption risk 2024',
+                f'{sector} India NPA stressed sector RBI',
+                f'{sector} India export import policy tariff 2024',
+            ]
 
-        # Promoter queries
+        # Promoter queries — deeper background checks
         for pname in promoter_names:
             queries.append(f'"{pname}" director India litigation fraud')
             queries.append(f'"{pname}" India company board MCA filings')
+            queries.append(f'"{pname}" wilful defaulter disqualified director India')
+            queries.append(f'"{pname}" criminal case FIR India')
 
         if location:
             queries.append(f'{sector} {location} India industry news')
 
         if self.llm_available:
+            # Build financial context block for the LLM
+            financial_context = ""
+            if loan_amount:
+                financial_context += f"Loan Amount Requested: ₹{loan_amount}\n"
+            if loan_purpose:
+                financial_context += f"Loan Purpose: {loan_purpose}\n"
+            if turnover:
+                financial_context += f"Company Turnover: ₹{turnover}\n"
+            if gst_details:
+                financial_context += f"GST Details: {gst_details}\n"
+
             prompt = (
-                f"You are a credit research analyst investigating an Indian company for a loan application.\n"
+                f"You are a senior credit research analyst at an Indian bank investigating a company for a loan.\n\n"
                 f"Company: {name}\n"
                 f"Sector: {sector}\n"
                 f"Location: {location}\n"
-                f"Promoters: {', '.join(promoter_names)}\n\n"
-                f"Generate 8 specific web search queries to find:\n"
-                f"1. Legal disputes or litigation involving the company or promoters\n"
-                f"2. Regulatory actions (RBI, SEBI, MCA filings, NCLT cases)\n"
-                f"3. Sector-specific headwinds or tailwinds\n"
-                f"4. News about financial health or fraud allegations\n"
-                f"5. Bank NPA or wilful defaulter listings\n"
-                f"6. Related party transactions or circular trading\n"
-                f"7. Environmental or labour compliance issues\n"
-                f"8. Competitor landscape or market share changes\n\n"
+                f"Promoters: {', '.join(promoter_names)}\n"
+                f"{financial_context}\n"
+                f"Generate 12 highly specific web search queries that a credit analyst would use.\n"
+                f"Focus on queries that reveal HIDDEN RISKS — not just general news.\n\n"
+                f"Query categories (generate at least one per category):\n"
+                f"1. NCLT/NCLAT/DRT cases against the company or promoters\n"
+                f"2. RBI/SEBI/MCA regulatory actions, penalties, or show-cause notices\n"
+                f"3. Wilful defaulter or SMA-2 listings in banking sector\n"
+                f"4. Related party transactions, circular trading, or shell companies\n"
+                f"5. Environmental violations (CPCB/SPCB), factory inspections, labour disputes\n"
+                f"6. Income tax raids, GST evasion cases, ED/CBI investigations\n"
+                f"7. Promoter personal litigation, criminal cases, or asset disputes\n"
+                f"8. Sector-specific stress — raw material prices, demand slump, policy changes\n"
+                f"9. Competitor defaults or sector-wide NPA trends\n"
+                f"10. Land/property disputes affecting collateral\n"
+                f"11. Stock exchange penalties, auditor qualifications, delayed filings\n"
+                f"12. Customer/vendor disputes, product recalls, or quality issues\n\n"
+                f"Make queries SPECIFIC to '{name}' where possible. Use quoted company names.\n"
                 f"Output ONLY the queries, one per line. No numbering, no explanation."
             )
             try:
-                resp = self.engine.generate(prompt, max_tokens=400, temperature=0.3)
+                resp = self.engine.generate(prompt, max_tokens=600, temperature=0.3)
                 if resp.answer and "[ERROR" not in resp.answer:
                     text = resp.answer if resp.answer else resp.raw_text
                     llm_queries = [q.strip().strip('"').strip("'") for q in text.strip().split('\n') if q.strip() and len(q.strip()) > 10]
-                    queries.extend(llm_queries[:8])
+                    queries.extend(llm_queries[:12])
             except Exception as e:
                 print(f"  [Research] LLM query generation failed: {e}")
 
@@ -279,21 +313,28 @@ class ResearchAgent:
 
         if self.llm_available:
             prompt = (
-                f"You are a credit analyst assessing loan risk for '{company_name}' "
-                f"which operates in the {company.get('sector', 'N/A')} sector in India.\n"
-                f"Evaluate this search result for credit-relevant information.\n"
-                f"A finding is relevant if it relates to:\n"
-                f"- The company or its promoters directly\n"
-                f"- The sector/industry the company operates in (regulations, trends, headwinds)\n"
-                f"- Similar companies facing legal, financial, or regulatory issues\n"
-                f"- Government policies affecting the sector\n\n"
+                f"You are a senior credit analyst at an Indian bank evaluating loan risk for '{company_name}' "
+                f"({company.get('sector', 'N/A')} sector, {company.get('location', 'India')}).\n\n"
+                f"Evaluate this search result for credit-decision-relevant information.\n"
+                f"A finding is RELEVANT if it provides evidence about:\n"
+                f"- Direct litigation, defaults, or regulatory action against the company/promoters\n"
+                f"- Financial health indicators (revenue trends, profitability, debt levels)\n"
+                f"- Sector headwinds/tailwinds that could affect repayment ability\n"
+                f"- Fraud allegations, circular trading, or shell company connections\n"
+                f"- Wilful defaulter listings, NPA status, or credit downgrades\n"
+                f"- Environmental/labour violations that risk business continuity\n"
+                f"- Government policy changes directly impacting the sector\n\n"
+                f"A finding is NOT relevant if it's generic industry description, dictionary content, "
+                f"or unrelated to creditworthiness.\n\n"
                 f"Title: {title}\n"
                 f"Snippet: {snippet}\n"
                 f"Source: {url}\n\n"
                 f"Respond ONLY with a JSON object (no markdown, no extra text):\n"
-                f'{{"relevant": true/false, "summary": "one sentence finding relevant to credit assessment", '
-                f'"category": "litigation|regulatory|financial|sector|promoter|fraud", '
+                f'{{"relevant": true/false, '
+                f'"summary": "2-3 sentence finding explaining the credit risk implication", '
+                f'"category": "litigation|regulatory|financial|sector|promoter|fraud|environmental|governance", '
                 f'"risk_impact": "positive|negative|neutral", '
+                f'"severity": "low|medium|high|critical", '
                 f'"confidence": 0.0-1.0}}'
             )
             try:
@@ -321,6 +362,7 @@ class ResearchAgent:
                             "source_title": title,
                             "category": analysis.get("category", "general"),
                             "risk_impact": analysis.get("risk_impact", "neutral"),
+                            "severity": analysis.get("severity", "medium"),
                             "confidence": max(analysis.get("confidence", 0.5), domain_conf),
                             "relevance_score": max(analysis.get("confidence", 0.5), domain_conf),
                             "source_tier": self._source_tier(domain_conf),
@@ -336,6 +378,39 @@ class ResearchAgent:
 
         # No fallback — LLM is required for proper sentiment classification
         return None
+
+    def _generate_followup_queries(self, company_name: str, findings: list[dict]) -> list[str]:
+        """Generate targeted follow-up queries based on high-signal initial findings."""
+        if not findings:
+            return []
+
+        # Count categories with negative findings
+        negative_cats: dict[str, list[str]] = {}
+        for f in findings:
+            if f.get("risk_impact") == "negative":
+                cat = f.get("category", "general")
+                summary = f.get("summary", "")
+                negative_cats.setdefault(cat, []).append(summary)
+
+        followup = []
+        for cat, summaries in negative_cats.items():
+            # Deep-dive on specific risk signals found
+            if cat in ("litigation", "fraud"):
+                followup.append(f'"{company_name}" court case judgment India 2023 2024')
+                followup.append(f'"{company_name}" NCLT insolvency proceedings India')
+            elif cat == "regulatory":
+                followup.append(f'"{company_name}" RBI penalty show cause notice India')
+                followup.append(f'"{company_name}" SEBI adjudication order India')
+            elif cat == "financial":
+                followup.append(f'"{company_name}" debt restructuring CDR India')
+                followup.append(f'"{company_name}" credit rating downgrade India')
+            elif cat == "promoter":
+                followup.append(f'"{company_name}" promoter criminal case arrest India')
+            elif cat == "environmental":
+                followup.append(f'"{company_name}" pollution control board closure notice India')
+
+        # Cap follow-ups to avoid excessive search time
+        return followup[:8]
 
     def research_company(self, company: dict, use_cache: bool = False,
                           planned_queries: list[str] = None) -> dict:
@@ -367,14 +442,14 @@ class ResearchAgent:
         seen_urls = set()
         for i, query in enumerate(queries):
             print(f"    Query {i+1}/{len(queries)}: {query[:60]}...")
-            results = web_search(query, max_results=10)
+            results = web_search(query, max_results=15)
             for r in results:
                 if r["url"] not in seen_urls:
                     seen_urls.add(r["url"])
                     all_results.append(r)
             # Brief pause between queries
             if i < len(queries) - 1:
-                time.sleep(0.5)
+                time.sleep(0.3)
 
         print(f"  [Research] Found {len(all_results)} unique web results")
 
@@ -397,6 +472,30 @@ class ResearchAgent:
                     finding["stale"] = True
                     finding["risk_impact"] = "stale_" + impact
                 findings.append(finding)
+
+        # Step 3b: Follow-up deep-dive searches on high-signal categories
+        followup_queries = self._generate_followup_queries(company_name, findings)
+        if followup_queries:
+            print(f"  [Research] Running {len(followup_queries)} follow-up deep-dive queries")
+            for i, query in enumerate(followup_queries):
+                print(f"    Follow-up {i+1}/{len(followup_queries)}: {query[:60]}...")
+                results = web_search(query, max_results=10)
+                for r in results:
+                    if r["url"] not in seen_urls:
+                        seen_urls.add(r["url"])
+                        if not self._is_noise(r):
+                            finding = self.analyze_finding(company, r, known_facts)
+                            if finding:
+                                domain_conf = finding.get("confidence", 0.0)
+                                impact = finding.get("risk_impact", "neutral")
+                                if impact == "negative" and domain_conf < self._TIER_FLOOR_FOR_NEGATIVE:
+                                    continue
+                                if self._is_stale(finding.get("raw_snippet", ""), finding.get("category", "")):
+                                    finding["stale"] = True
+                                    finding["risk_impact"] = "stale_" + impact
+                                findings.append(finding)
+                if i < len(followup_queries) - 1:
+                    time.sleep(0.3)
 
         # Step 4: Deduplicate and rank findings
         unique_findings = []

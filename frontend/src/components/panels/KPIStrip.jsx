@@ -37,7 +37,9 @@ export default function KPIStrip({ decision, firings, findings, research, eviden
     },
     {
       label: 'Graph',
-      value: formatLabel(graphTrace?.gnn_label),
+      value: graphTrace?.evidence_source === 'synthesized_from_facts'
+        ? 'Synthesized'
+        : formatLabel(graphTrace?.gnn_label),
       sub: graphTrace
         ? `${graphTrace.node_count ?? 0}n · ${graphTrace.edge_count ?? graphTrace.edges_examined ?? 0}e · ${graphTrace.suspicious_cycles ?? 0} cycles`
         : 'No graph data',
