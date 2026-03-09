@@ -186,8 +186,8 @@ class ResearchAgent:
             return "low"
 
     # Minimum domain confidence required for a negative finding to be included:
-    # "low" tier negative findings are silently dropped to reduce noise.
-    _TIER_FLOOR_FOR_NEGATIVE = 0.50
+    # Very-low tier negative findings are silently dropped to reduce noise.
+    _TIER_FLOOR_FOR_NEGATIVE = 0.30
 
     # Noise patterns: if snippet/title contains these, treat as dictionary/wiki/forum noise
     _NOISE_PATTERNS: list[str] = [
@@ -235,9 +235,9 @@ class ResearchAgent:
         if sector and len(sector) >= 6 and sector in text_lower:
             return True
 
-        # Multi-word name match: require 2+ significant words (>4 chars) to match
-        significant = [w for w in name.split() if len(w) > 4 and w not in {"india", "pvt", "ltd", "limited", "private", "corp"}]
-        if len(significant) >= 2 and sum(1 for w in significant if w in text_lower) >= 2:
+        # Multi-word name match: require 1+ significant words (>3 chars) to match
+        significant = [w for w in name.split() if len(w) > 3 and w not in {"india", "pvt", "ltd", "limited", "private", "corp", "the"}]
+        if significant and sum(1 for w in significant if w in text_lower) >= min(2, len(significant)):
             return True
 
         return False
@@ -410,7 +410,7 @@ class ResearchAgent:
         seen_urls = set()
         for i, query in enumerate(queries):
             print(f"    Query {i+1}/{len(queries)}: {query[:60]}...")
-            results = web_search(query, max_results=5)
+            results = web_search(query, max_results=10)
             for r in results:
                 if r["url"] not in seen_urls:
                     seen_urls.add(r["url"])
@@ -445,7 +445,7 @@ class ResearchAgent:
         unique_findings = []
         seen_summaries = set()
         for f in sorted(findings, key=lambda x: x.get("confidence", 0), reverse=True):
-            summary_key = f["summary"][:50].lower()
+            summary_key = f["summary"][:120].lower()
             if summary_key not in seen_summaries:
                 seen_summaries.add(summary_key)
                 unique_findings.append(f)

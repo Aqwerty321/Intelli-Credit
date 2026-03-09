@@ -158,4 +158,4 @@ class TestTierFloor:
 
     def test_tier_floor_value(self):
         agent = _agent()
-        assert agent._TIER_FLOOR_FOR_NEGATIVE == 0.50
+        assert agent._TIER_FLOOR_FOR_NEGATIVE == 0.30
