@@ -13,6 +13,7 @@ import json
 import sys
 from pathlib import Path
 
+import onnx
 import torch
 import torch.nn as nn
 
@@ -168,6 +169,17 @@ def main():
         },
         opset_version=18,
     )
+
+    # Consolidate external data into the .onnx file so onnxruntime-web
+    # can load it in the browser (no filesystem access for .data files).
+    model_proto = onnx.load(str(onnx_path), load_external_data=True)
+    onnx.save(model_proto, str(onnx_path))
+    # Remove leftover external data file if present
+    data_file = onnx_path.with_suffix('.onnx.data')
+    if data_file.exists():
+        data_file.unlink()
+        print("  Removed external data file (weights embedded in .onnx)")
+
     print(f"  ONNX exported: {onnx_path} ({onnx_path.stat().st_size / 1024:.1f} KB)")
 
     # Save metadata for frontend
