@@ -310,56 +310,9 @@ class ResearchAgent:
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
             except (json.JSONDecodeError, Exception) as e:
-                pass
+                print(f"  [Research] LLM analysis failed for {url}: {e}")
 
-        # Fallback: basic keyword relevance check without LLM
-        combined = (title + " " + snippet).lower()
-        company_lower = company_name.lower().split()[0] if company_name else ""
-        sector_lower = company.get("sector", "").lower()
-
-        risk_keywords = [
-            # Legal / regulatory
-            "litigation", "fraud", "default", "npa", "scam", "penalty",
-            "violation", "rbi", "sebi", "nclt", "insolvency", "bankruptcy",
-            "cheque bounce", "regulation", "policy", "compliance",
-            # Trade / economic
-            "tariff", "duty", "import", "export", "trade", "gdp", "economic",
-            "economy", "demand", "supply", "price", "cost", "raw material",
-            # Sector / industry
-            "growth", "decline", "slowdown", "headwind", "sector", "industry",
-            "market", "manufacturing", "production", "revenue", "profit",
-            "turnover", "investment", "infrastructure", "capacity",
-            # Government / schemes
-            "government", "ministry", "msme", "pli", "subsidy", "scheme",
-            "budget", "forecast", "outlook",
-            # Sector-specific terms
-            "automobile", "automotive", "auto parts", "steel", "pharma",
-            "pharmaceutical", "chemical", "textile", "electronics",
-        ]
-
-        # Also match the company's sector name directly
-        if sector_lower and len(sector_lower) > 3:
-            risk_keywords.append(sector_lower)
-
-        if any(kw in combined for kw in risk_keywords):
-            summary = f"{title}: {snippet[:100]}"
-            is_novel = not any(known.lower() in summary.lower() for known in known_facts)
-            return {
-                "summary": summary,
-                "source": url,
-                "source_title": title,
-                "category": "general",
-                "risk_impact": "negative",
-                "confidence": domain_conf,
-                "relevance_score": domain_conf,
-                "source_tier": self._source_tier(domain_conf),
-                "sentiment_score": -0.4,
-                "corroborated": True,
-                "novel": is_novel,
-                "raw_snippet": snippet[:200],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-
+        # No fallback — LLM is required for proper sentiment classification
         return None
 
     def research_company(self, company: dict, use_cache: bool = True,

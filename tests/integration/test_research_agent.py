@@ -4,18 +4,41 @@ Validates domain blocklist, entity gating, and sentiment_score fields.
 Run: pytest tests/integration/test_research_agent.py -v
 Note: These tests use mock search results and do NOT hit the live SearXNG.
 """
+import json
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+
+class _FakeResp:
+    """Minimal mock for CognitiveEngine.generate() response."""
+    def __init__(self, text):
+        self.answer = text
+        self.raw_text = text
 
 
 @pytest.fixture
 def agent():
-    """Research agent with no live LLM."""
+    """Research agent with mocked LLM that returns valid JSON analyses."""
     from services.agents.research_agent import ResearchAgent
     a = ResearchAgent.__new__(ResearchAgent)
-    a.llm_available = False
-    a.engine = None
     a.ollama_base = None
+
+    # Build a mock engine whose generate() returns a plausible analysis
+    mock_engine = MagicMock()
+    def _fake_generate(prompt, **kwargs):
+        # Default: relevant, negative, general
+        return _FakeResp(json.dumps({
+            "relevant": True,
+            "summary": "Company faces sector headwinds and regulatory scrutiny.",
+            "category": "general",
+            "risk_impact": "negative",
+            "confidence": 0.7,
+        }))
+    mock_engine.generate.side_effect = _fake_generate
+    mock_engine.is_alive.return_value = True
+
+    a.engine = mock_engine
+    a.llm_available = True
     return a
 
 
