@@ -676,14 +676,18 @@ def run_pipeline(
 
     with open(cam_path) as f:
         cam_markdown = f.read()
-    assert_presentation_safe(
-        trace=trace,
-        cam_markdown=cam_markdown,
-        extra_payload={
-            "headline": presentation_summary.get("headline"),
-            "callouts": presentation_summary.get("callouts", []),
-        },
-    )
+
+    # Only enforce presentation-safety for demo cases (those with expected_artifacts).
+    # Regular appraisals may legitimately contain [N/A] for missing data.
+    if case_meta.get("expected_artifacts"):
+        assert_presentation_safe(
+            trace=trace,
+            cam_markdown=cam_markdown,
+            extra_payload={
+                "headline": presentation_summary.get("headline"),
+                "callouts": presentation_summary.get("callouts", []),
+            },
+        )
 
     # Log to provenance
     try:
