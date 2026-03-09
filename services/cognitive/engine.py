@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEEPSEEK_MODEL = "sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest"
 GLM_OCR_MODEL = "glm-ocr:bf16"
 # Lightweight model for fast orchestration tasks (routing, judging, claim building)
-LIGHT_MODEL = "qwen2.5:3b"
+LIGHT_MODEL = "llama3.2:3b"
 
 # Ollama API base (auto-detect: env var > Windows host from WSL2 > localhost)
 OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://172.23.112.1:11434")
