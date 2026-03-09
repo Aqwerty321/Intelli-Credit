@@ -77,3 +77,25 @@ export const streamRunUrl = (caseId) =>
 
 export const getHealth = () =>
   _request('GET', '/api/health')
+// ── Graph ────────────────────────────────────────────────────────────────
+
+export const getGraphTopology = (caseId) =>
+  _request('GET', `/api/cases/${caseId}/graph`)
+
+export const getGraphFeatures = (caseId) =>
+  _request('GET', `/api/cases/${caseId}/graph/features`)
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+
+export const getDashboardStats = () =>
+  _request('GET', '/api/cases/stats/dashboard')
+
+// ── Compare ──────────────────────────────────────────────────────────────────
+
+export const compareCases = (caseIds) =>
+  _request('GET', `/api/cases/compare/bulk?ids=${caseIds.join(',')}`)
+
+// ── PDF CAM ──────────────────────────────────────────────────────────────────
+
+export const downloadCAMPdfUrl = (caseId) =>
+  `/api/cases/${caseId}/cam/pdf`

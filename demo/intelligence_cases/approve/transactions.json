@@ -1,0 +1,19 @@
+{
+  "nodes": {
+    "Sunrise Textiles Pvt Ltd": {"role": "borrower"},
+    "State Bank of India WC Account": {"role": "bank"},
+    "Shree Cotton Traders": {"role": "supplier"},
+    "Surat Dye Chem LLP": {"role": "supplier"},
+    "EU Fabric Buyer BV": {"role": "customer"},
+    "West India Retail Hub": {"role": "customer"}
+  },
+  "transactions": [
+    {"transaction_id": "sun_001", "source": "State Bank of India WC Account", "target": "Sunrise Textiles Pvt Ltd", "amount": 5500000, "date": "2025-01-04", "type": "BANK_CREDIT"},
+    {"transaction_id": "sun_002", "source": "Shree Cotton Traders", "target": "Sunrise Textiles Pvt Ltd", "amount": 2100000, "date": "2025-01-09", "type": "GST_INVOICE"},
+    {"transaction_id": "sun_003", "source": "Surat Dye Chem LLP", "target": "Sunrise Textiles Pvt Ltd", "amount": 1600000, "date": "2025-01-12", "type": "GST_INVOICE"},
+    {"transaction_id": "sun_004", "source": "Sunrise Textiles Pvt Ltd", "target": "EU Fabric Buyer BV", "amount": 2400000, "date": "2025-01-18", "type": "SALES_RECEIPT"},
+    {"transaction_id": "sun_005", "source": "Sunrise Textiles Pvt Ltd", "target": "West India Retail Hub", "amount": 1950000, "date": "2025-01-21", "type": "SALES_RECEIPT"},
+    {"transaction_id": "sun_006", "source": "Shree Cotton Traders", "target": "Sunrise Textiles Pvt Ltd", "amount": 1800000, "date": "2025-02-04", "type": "GST_INVOICE"},
+    {"transaction_id": "sun_007", "source": "Sunrise Textiles Pvt Ltd", "target": "EU Fabric Buyer BV", "amount": 2550000, "date": "2025-02-13", "type": "SALES_RECEIPT"}
+  ]
+}

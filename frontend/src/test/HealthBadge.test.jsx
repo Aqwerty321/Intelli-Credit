@@ -7,13 +7,16 @@ import App from '../App'
 vi.mock('../services/api', () => ({
   getHealth: vi.fn(),
   listCases: vi.fn(),
+  getDashboardStats: vi.fn(),
 }))
 
-import { getHealth } from '../services/api'
+import { getHealth, listCases, getDashboardStats } from '../services/api'
 
 describe('HealthBadge in App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    listCases.mockReturnValue(new Promise(() => {}))
+    getDashboardStats.mockReturnValue(new Promise(() => {}))
   })
 
   afterEach(() => {

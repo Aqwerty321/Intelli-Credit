@@ -203,10 +203,21 @@ class RuleEngine:
             excess = lhs_val - rhs_val
             excess_pct = (excess / rhs_val * 100) if rhs_val > 0 else 0.0
             abs_threshold = float(condition.get("absolute_threshold", 0))
+            direction_label = "inflation" if excess > 0 else "suppression"
+            interpretation = (
+                "GST-declared sales materially exceed banking credits, suggesting inflated turnover"
+                if excess > 0
+                else "Banking credits exceed GST-declared sales, suggesting reporting inconsistency"
+            )
             inputs = {
                 lhs_field: lhs_val,
                 rhs_field: rhs_val,
                 "excess_pct": round(excess_pct, 2),
+                "gst_turnover": round(lhs_val, 2),
+                "bank_credits": round(rhs_val, 2),
+                "deviation_pct": round(abs(excess_pct), 2),
+                "direction": direction_label,
+                "interpretation": interpretation,
             }
             operator = condition.get("operator", ">")
             if operator == "deviation":
@@ -266,6 +277,10 @@ class RuleEngine:
                 inputs["threshold_level"] = best.get("level", "flag")
                 inputs["threshold_severity"] = best.get("severity", "HIGH")
                 inputs["threshold_value"] = best.get("value")
+                inputs["threshold_pct"] = best.get("value")
+                inputs["utilization_pct"] = round(val, 2)
+                inputs["source_type"] = facts.get("capacity_source_type", "borrower fact sheet")
+                inputs["source_detail"] = facts.get("capacity_source_detail", "Uploaded case facts")
                 op = ">=" if direction == "above" else "<="
                 return (
                     True, inputs,
@@ -333,8 +348,24 @@ class RuleEngine:
             if val >= min_count:
                 risk_adj = float(t.get("risk_adjustment", action.get("risk_adjustment", 0.1)))
                 if risk_adj > best_risk:
+                    civil_high = int(facts.get("civil_high_value_cases", 0) or 0)
+                    civil_any = int(facts.get("civil_any_cases", 0) or 0)
+                    criminal = int(facts.get("criminal_cases", 0) or 0)
+                    litigation_count = criminal + civil_high + civil_any
+                    promoter_name = facts.get("promoter_name") or facts.get("company_name", "Promoter")
                     best_risk = risk_adj
-                    best_inputs = {count_field: val, "severity": t.get("severity", "MEDIUM")}
+                    best_inputs = {
+                        count_field: val,
+                        "severity": t.get("severity", "MEDIUM"),
+                        "promoter_name": promoter_name,
+                        "litigation_count": litigation_count,
+                        "criminal_count": criminal,
+                        "high_value_count": civil_high,
+                        "case_summary": facts.get(
+                            "case_summary",
+                            f"{criminal} criminal, {civil_high} high-value civil, {civil_any} civil matters",
+                        ),
+                    }
                     best_rationale = f"{count_field}={val} >= {min_count} ({t.get('severity', 'MEDIUM')})"
                     triggered = True
 
@@ -363,7 +394,12 @@ class RuleEngine:
             return False, {}, "", 0.0, []
 
         ratio = num / den
-        inputs = {num_field: num, den_field: den, "coverage_ratio": round(ratio, 3)}
+        inputs = {
+            num_field: num,
+            den_field: den,
+            "coverage_ratio": round(ratio, 3),
+            "loan_amount": round(den, 2),
+        }
 
         # Walk thresholds sorted by ratio ascending; first one ratio crosses is the binding constraint
         for t in sorted(thresholds, key=lambda x: float(x.get("ratio", 0))):
@@ -371,6 +407,11 @@ class RuleEngine:
                 risk_adj = float(t.get("risk_adjustment", action.get("risk_adjustment", 0.15)))
                 inputs["threshold_ratio"] = t.get("ratio")
                 inputs["threshold_level"] = t.get("level")
+                inputs["assessment"] = (
+                    "Collateral coverage is below the hard policy floor"
+                    if t.get("level") == "hard_constraint"
+                    else "Collateral cover warrants tighter structure or additional security"
+                )
                 return (
                     True, inputs,
                     f"Coverage ratio {ratio:.2f} < {t['ratio']} ({t.get('level')})",

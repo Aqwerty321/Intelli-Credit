@@ -143,6 +143,24 @@ def insert_document(conn, document_id: str, source_file: str,
           page_count, json.dumps(metadata) if metadata else None])
 
 
+def replace_document(conn, document_id: str, source_file: str,
+                     document_type: str = None, company_name: str = None,
+                     page_count: int = None, metadata: dict = None) -> None:
+    """Replace a document row and clear dependent rows for deterministic reruns."""
+    conn.execute("DELETE FROM extracted_fields WHERE document_id = ?", [document_id])
+    conn.execute("DELETE FROM transactions WHERE document_id = ?", [document_id])
+    conn.execute("DELETE FROM documents WHERE document_id = ?", [document_id])
+    insert_document(
+        conn,
+        document_id=document_id,
+        source_file=source_file,
+        document_type=document_type,
+        company_name=company_name,
+        page_count=page_count,
+        metadata=metadata,
+    )
+
+
 def insert_extracted_field(conn, document_id: str, field_name: str,
                            field_value: str, field_type: str = "string",
                            page_number: int = None, confidence: float = None,
@@ -157,6 +175,31 @@ def insert_extracted_field(conn, document_id: str, field_name: str,
     """, [document_id, field_name, field_value, field_type, page_number,
           confidence, extraction_method, agent_id,
           json.dumps(provenance) if provenance else None])
+
+
+def insert_transaction(conn, transaction_id: str, source_entity_id: str,
+                       target_entity_id: str, amount: float,
+                       currency: str = "INR", transaction_date: str = None,
+                       transaction_type: str = None, document_id: str = None,
+                       provenance: dict = None) -> None:
+    """Insert or replace a transaction record."""
+    conn.execute("DELETE FROM transactions WHERE transaction_id = ?", [transaction_id])
+    conn.execute("""
+        INSERT INTO transactions (transaction_id, source_entity_id, target_entity_id,
+                                  amount, currency, transaction_date, transaction_type,
+                                  document_id, provenance)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [
+        transaction_id,
+        source_entity_id,
+        target_entity_id,
+        amount,
+        currency,
+        transaction_date,
+        transaction_type,
+        document_id,
+        json.dumps(provenance) if provenance else None,
+    ])
 
 
 def log_provenance(conn, action: str, entity_type: str = None,

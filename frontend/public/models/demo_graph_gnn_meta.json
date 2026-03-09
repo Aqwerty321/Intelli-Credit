@@ -1,0 +1,21 @@
+{
+  "graph_labels": [
+    "clean",
+    "ring",
+    "star_seller",
+    "dense_cluster",
+    "layered_chain"
+  ],
+  "feature_dim": 7,
+  "feature_names": [
+    "in_degree",
+    "out_degree",
+    "incoming_value",
+    "outgoing_value",
+    "net_amount",
+    "total_flow",
+    "role_value"
+  ],
+  "hidden_channels": 24,
+  "onnx_file": "demo_graph_gnn.onnx"
+}

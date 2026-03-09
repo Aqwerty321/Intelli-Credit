@@ -1,0 +1,68 @@
+{
+  "company": "Apex Steel Components Ltd",
+  "cache_version": "3",
+  "queries_executed": 4,
+  "web_results_found": 9,
+  "findings": [
+    {
+      "summary": "Apex Steel Components Ltd has two pending civil suits in Pune District Court related to commercial disputes with suppliers. No criminal proceedings.",
+      "source": "https://ecourts.gov.in/pune-district",
+      "source_title": "eCourts Services - Pune District Court",
+      "category": "litigation",
+      "risk_impact": "negative",
+      "confidence": 0.88,
+      "source_tier": "authoritative",
+      "corroboration_count": 1,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Case No. CS/2024/1892 and CS/2024/2104 — Apex Steel Components Ltd as respondent in commercial disputes. Status: pending.",
+      "timestamp": "2025-11-10T09:30:00Z"
+    },
+    {
+      "summary": "Indian auto ancillary steel sector faces headwinds from EV transition but demand remains stable from traditional OEMs.",
+      "source": "https://www.business-standard.com/auto-components-2024",
+      "source_title": "Auto Component Industry Faces Mixed Outlook",
+      "category": "sector",
+      "risk_impact": "negative",
+      "confidence": 0.72,
+      "source_tier": "credible",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Auto ancillary manufacturers in Pune report stable demand from legacy OEMs, though EV transition creates uncertainty for forging and casting units.",
+      "timestamp": "2025-10-28T11:20:00Z"
+    },
+    {
+      "summary": "Apex Steel Components reported working capital stress in recent filings, with delayed receivables from OEM customers.",
+      "source": "https://www.moneycontrol.com/stocks/company_info",
+      "source_title": "Apex Steel Components Financial Summary",
+      "category": "financial",
+      "risk_impact": "negative",
+      "confidence": 0.65,
+      "source_tier": "credible",
+      "corroboration_count": 1,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Apex Steel's receivable days increased to 78 from 52 in the prior year, suggesting working capital pressure.",
+      "timestamp": "2025-11-05T16:45:00Z"
+    },
+    {
+      "summary": "No MCA adverse filings or NCLT proceedings against Apex Steel Components Ltd.",
+      "source": "https://www.mca.gov.in",
+      "source_title": "MCA Company Search",
+      "category": "regulatory",
+      "risk_impact": "neutral",
+      "confidence": 0.90,
+      "source_tier": "authoritative",
+      "corroboration_count": 1,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "No NCLT petitions, striking-off proceedings, or fraud complaints found for Apex Steel Components Ltd.",
+      "timestamp": "2025-11-10T10:00:00Z"
+    }
+  ],
+  "corroborated_findings": 2,
+  "stale_findings_marked": 0,
+  "research_timestamp": "2025-11-10T11:00:00Z",
+  "elapsed_seconds": 12.4
+}

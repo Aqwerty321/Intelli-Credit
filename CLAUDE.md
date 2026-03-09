@@ -7,8 +7,8 @@
 
 ## Quick start (current build)
 
-> The system is implemented and working. Phase 3 + Phase 4 + Phase 5 complete.  
-> **Test baseline: 197+ tests pass (175 Phase 4 + 22 Phase 5 backend).  Frontend Vitest: 24 unit tests.  Trace schema: v3.  Frontend: 39 modules.**
+> The system is implemented and working. Phase 3 + Phase 4 + Phase 5 + Phase 6 complete.  
+> **Test baseline: 220 tests pass (175 Phase 4 + 22 Phase 5 + 23 Phase 6 demo cases).  Frontend Vitest: 24 unit tests.  Trace schema: v3.  Frontend: 39 modules.**
 
 ### Prerequisites
 - Ollama running with `sjo/deepseek-r1-8b-llama-distill-abliterated-q8_0:latest` at `http://172.23.112.1:11434`
@@ -29,7 +29,7 @@ This starts the FastAPI backend on `http://localhost:8000` and the Vite dev serv
 # or directly:
 python -m pytest tests/ -v --tb=short
 ```
-Expected: **172+ PASS** (Phase 3 + Phase 4 tests)
+Expected: **220 PASS** (Phase 3 + Phase 4 + Phase 5 + Phase 6 tests)
 
 ### One-command judge pack (tests + showdown + scorecard)
 ```bash
@@ -177,6 +177,46 @@ cd frontend && npm run e2e
 
 ### Feature access matrix
 See `docs/feature_access_matrix.md` for a full backend-endpoint → UI-component mapping.
+
+---
+
+## Phase 6 implementation status — Judge-Ready 3-Case Intelligence Demo Pack
+
+### Demo intelligence cases (`demo/intelligence_cases/`)
+Deterministic 3-case sequence exercising every intelligence layer with pre-shaped research caches, parser-friendly documents (`.md` + `.pdf`), and manifest-driven validation.
+
+| Case | Company | Verdict | Risk Score | Rules Fired | Key Signals |
+|------|---------|---------|------------|-------------|-------------|
+| APPROVE | Sunrise Textiles Pvt Ltd | APPROVE | 0.30 | 0 | CMR=3, DPD=0, clean ITC, capacity 78%, collateral 1.6× |
+| CONDITIONAL | Apex Steel Components Ltd | CONDITIONAL | 0.65 | 3 | CMR=6 (+0.10), DPD=45 (+0.10), ITC 33% excess (+0.15) |
+| REJECT | Greenfield Pharma Industries Pvt Ltd | REJECT | 1.0 (hard) | 9 | CMR=9, DPD=120, circular trading, criminal cases, capacity 25% |
+
+### Files
+| File | Purpose |
+|------|--------|
+| `demo/intelligence_cases/manifest.json` | Contract: seed payloads, documents, note steps, expected verdicts, coverage assertions |
+| `demo/intelligence_cases/{approve,conditional,reject}/seed.json` | CaseCreate payloads |
+| `demo/intelligence_cases/{approve,conditional,reject}/facts.md` | Parser-friendly documents (regex-matched by `services/ingestor/validator.py`) |
+| `demo/intelligence_cases/{approve,conditional,reject}/research_cache.json` | Pre-shaped v3 research caches |
+| `scripts/demo_intelligence_pack.py` | Python orchestrator: `prepare` / `verify` / `cleanup` |
+| `tests/integration/test_demo_cases.py` | 23 pytest integration tests (manifest-driven) |
+
+### Run demo pack (requires live API)
+```bash
+source .venv/bin/activate
+# Start API in background
+uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+# Run the 3-case demo
+python scripts/demo_intelligence_pack.py prepare
+python scripts/demo_intelligence_pack.py verify
+python scripts/demo_intelligence_pack.py cleanup
+```
+
+### Run demo tests (no live server needed)
+```bash
+python -m pytest tests/integration/test_demo_cases.py -v
+# Expected: 23 PASS
+```
 
 ---
 

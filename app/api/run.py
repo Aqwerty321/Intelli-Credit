@@ -105,6 +105,7 @@ def _run_pipeline_thread(case_id: str, meta: dict, queue: asyncio.Queue, loop: a
             location=meta.get("location", ""),
             promoters=meta.get("promoters", []),
             officer_notes=officer_notes,
+            case_meta=meta,
         )
 
         # Load generated trace
@@ -261,6 +262,7 @@ def run_sync(case_id: str):
         location=meta.get("location", ""),
         promoters=meta.get("promoters", []),
         officer_notes=officer_notes,
+        case_meta=meta,
     )
 
     # Load trace

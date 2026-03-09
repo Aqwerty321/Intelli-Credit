@@ -1,0 +1,82 @@
+{
+  "company": "Greenfield Pharma Industries Pvt Ltd",
+  "cache_version": "3",
+  "queries_executed": 5,
+  "web_results_found": 14,
+  "findings": [
+    {
+      "summary": "SFIO has opened an investigation into Greenfield Pharma Industries Pvt Ltd (Case No. SFIO/2024/HYD/042) for suspected financial irregularities and circular trading through shell entities.",
+      "source": "https://www.mca.gov.in/sfio-orders",
+      "source_title": "SFIO Investigation Orders - Ministry of Corporate Affairs",
+      "category": "regulatory",
+      "risk_impact": "negative",
+      "confidence": 0.95,
+      "source_tier": "authoritative",
+      "corroboration_count": 3,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "SFIO/2024/HYD/042: Investigation ordered u/s 212 of Companies Act, 2013 into affairs of Greenfield Pharma Industries Pvt Ltd, Hyderabad.",
+      "timestamp": "2025-09-15T12:00:00Z"
+    },
+    {
+      "summary": "Two IPC cases registered against promoter Suresh Kumar Reddy — FIR 482/2024 (cheating u/s 420) and FIR 503/2024 (forgery u/s 468) at Cyberabad Police Station.",
+      "source": "https://ecourts.gov.in/telangana",
+      "source_title": "eCourts Telangana - FIR Status",
+      "category": "litigation",
+      "risk_impact": "negative",
+      "confidence": 0.92,
+      "source_tier": "authoritative",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "FIR 482/2024 and FIR 503/2024 registered at Cyberabad PS. Accused: Suresh Kumar Reddy, Director of Greenfield Pharma Industries.",
+      "timestamp": "2025-10-01T14:30:00Z"
+    },
+    {
+      "summary": "GST authorities detected circular invoice chain involving Greenfield Pharma, Helix Chemicals, Indus Pharma Traders, and Jupiter Chemical Suppliers. Total fraudulent ITC claim estimated at ₹1.5 crore.",
+      "source": "https://economictimes.com/gst-fraud-hyderabad-pharma-2024",
+      "source_title": "Hyderabad Pharma Firm Under GST Scanner for Circular Trading",
+      "category": "regulatory",
+      "risk_impact": "negative",
+      "confidence": 0.85,
+      "source_tier": "credible",
+      "corroboration_count": 3,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "GST intelligence officers uncovered a 4-entity circular trading ring involving Greenfield Pharma and three related/shell companies in Hyderabad.",
+      "timestamp": "2025-08-20T09:00:00Z"
+    },
+    {
+      "summary": "Greenfield Pharma's bank account with State Bank of India shows NPA classification since March 2024, with 120+ days past due on term loan facility.",
+      "source": "https://www.business-standard.com/npa-pharma-msme",
+      "source_title": "MSME NPAs Rise in Pharma Sector",
+      "category": "financial",
+      "risk_impact": "negative",
+      "confidence": 0.78,
+      "source_tier": "credible",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Several Hyderabad-based pharma MSMEs including Greenfield Pharma reported NPA classification. DPD exceeding 90 days.",
+      "timestamp": "2025-09-10T16:00:00Z"
+    },
+    {
+      "summary": "Pharmaceutical chemicals manufacturing capacity utilization across Telangana SMEs dropped to 30-40% range amid raw material cost pressures.",
+      "source": "https://www.livemint.com/pharma-sector-distress",
+      "source_title": "Pharma MSME Sector Faces Capacity Headwinds",
+      "category": "sector",
+      "risk_impact": "negative",
+      "confidence": 0.70,
+      "source_tier": "credible",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Telangana pharma SMEs operating at sub-40% capacity utilization. Input cost inflation and API pricing pressure cited as primary causes.",
+      "timestamp": "2025-10-15T08:45:00Z"
+    }
+  ],
+  "corroborated_findings": 4,
+  "stale_findings_marked": 0,
+  "research_timestamp": "2025-11-12T15:30:00Z",
+  "elapsed_seconds": 18.7
+}

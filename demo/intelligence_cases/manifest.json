@@ -1,0 +1,302 @@
+{
+  "schema": "intelligence_demo_pack_v2",
+  "description": "5-case deterministic demo sequence exercising presentation-grade intelligence layers",
+  "cases": [
+    {
+      "case_label": "APPROVE",
+      "demo_rank": 1,
+      "folder": "approve",
+      "company_name": "Sunrise Textiles Pvt Ltd",
+      "seed_payload": "approve/seed.json",
+      "documents": [
+        "approve/facts.md",
+        "approve/transactions.json"
+      ],
+      "generate_pdf": true,
+      "note_steps": [],
+      "presentation_summary": {
+        "headline": "Clean borrower profile with strong repayment discipline and transaction flows consistent with declared operations.",
+        "callouts": [
+          "Zero adverse graph motifs across seven structured trade-flow edges.",
+          "CMR 3 and DPD 0 keep behavioural risk in the low band.",
+          "Bank-credit alignment stays within operating tolerance.",
+          "Collateral cover remains comfortably above requested working-capital exposure."
+        ]
+      },
+      "graph_expectations": {
+        "node_count": 6,
+        "edge_count": 7,
+        "suspicious_cycles": 0,
+        "gnn_label": "clean",
+        "gnn_risk_score_min": 0.0,
+        "gnn_risk_score_max": 0.35,
+        "top_entities": ["Sunrise Textiles Pvt Ltd", "State Bank of India WC Account", "Shree Cotton Traders"]
+      },
+      "expected_artifacts": {
+        "cam_ready": true,
+        "graph_ready": true,
+        "judge_ready": true,
+        "no_placeholder_text": true,
+        "no_warning_text": true
+      },
+      "expected": {
+        "recommendation": "APPROVE",
+        "risk_score_max": 0.5,
+        "risk_score_min": 0.28,
+        "rules_fired": [],
+        "hard_reject": false,
+        "schema_version": "v3"
+      },
+      "coverage_assertions": [
+        "trace_exists",
+        "cam_generated",
+        "no_rules_fired",
+        "research_cache_used",
+        "graph_stats_present",
+        "presentation_safe"
+      ]
+    },
+    {
+      "case_label": "APPROVE_PLUS",
+      "demo_rank": 2,
+      "folder": "approve_plus",
+      "company_name": "Narmada Agro Mills Pvt Ltd",
+      "seed_payload": "approve_plus/seed.json",
+      "documents": [
+        "approve_plus/facts.md",
+        "approve_plus/transactions.json"
+      ],
+      "generate_pdf": true,
+      "note_steps": [],
+      "presentation_summary": {
+        "headline": "Strong operating borrower with diversified working-capital flows and no graph-side fraud signatures.",
+        "callouts": [
+          "Seven clean transaction edges produce a low PyG graph-risk score.",
+          "Healthy turnover-to-loan relationship supports the requested working-capital line.",
+          "External research stays supportive with no material promoter issues.",
+          "Collateral and cash-flow alignment remain well inside policy comfort."
+        ]
+      },
+      "graph_expectations": {
+        "node_count": 6,
+        "edge_count": 7,
+        "suspicious_cycles": 0,
+        "gnn_label": "clean",
+        "gnn_risk_score_min": 0.0,
+        "gnn_risk_score_max": 0.35,
+        "top_entities": ["Narmada Agro Mills Pvt Ltd", "HDFC Working Capital Line", "Malwa Grain Procurement Co"]
+      },
+      "expected_artifacts": {
+        "cam_ready": true,
+        "graph_ready": true,
+        "judge_ready": true,
+        "no_placeholder_text": true,
+        "no_warning_text": true
+      },
+      "expected": {
+        "recommendation": "APPROVE",
+        "risk_score_max": 0.5,
+        "risk_score_min": 0.28,
+        "rules_fired": [],
+        "hard_reject": false,
+        "schema_version": "v3"
+      },
+      "coverage_assertions": [
+        "trace_exists",
+        "cam_generated",
+        "no_rules_fired",
+        "research_cache_used",
+        "graph_stats_present",
+        "presentation_safe"
+      ]
+    },
+    {
+      "case_label": "CONDITIONAL",
+      "demo_rank": 3,
+      "folder": "conditional",
+      "company_name": "Apex Steel Components Ltd",
+      "seed_payload": "conditional/seed.json",
+      "documents": [
+        "conditional/facts.md",
+        "conditional/transactions.json"
+      ],
+      "generate_pdf": true,
+      "note_steps": [
+        {
+          "author": "demo_analyst",
+          "text": "ITC excess of 33% requires supplier-level reconciliation before disbursement.",
+          "note_type": "risk",
+          "tags": ["itc", "gst", "compliance"],
+          "pinned": true
+        },
+        {
+          "author": "demo_analyst",
+          "text": "DPD=45 within warning band. Recommend quarterly CIBIL refresh clause.",
+          "note_type": "general",
+          "tags": ["cibil", "monitoring"],
+          "pinned": false
+        }
+      ],
+      "presentation_summary": {
+        "headline": "Borderline case with behavioural and GST reconciliation stress, but no graph-level hard-fraud pattern.",
+        "callouts": [
+          "Seven transaction edges remain sparse and non-circular.",
+          "CMR 6 and DPD 45 keep the borrower in the conditional sanction band.",
+          "ITC over-claim requires tighter drawdown controls and supplier reconciliation.",
+          "Officer notes are intentionally surfaced as part of the final recommendation."
+        ]
+      },
+      "graph_expectations": {
+        "node_count": 6,
+        "edge_count": 7,
+        "suspicious_cycles": 0,
+        "gnn_label": "clean",
+        "gnn_risk_score_min": 0.2,
+        "gnn_risk_score_max": 0.75,
+        "top_entities": ["Apex Steel Components Ltd", "Axis Bank TL Disbursement", "Pune Alloy Supply Co"]
+      },
+      "expected_artifacts": {
+        "cam_ready": true,
+        "graph_ready": true,
+        "judge_ready": true,
+        "no_placeholder_text": true,
+        "no_warning_text": true
+      },
+      "expected": {
+        "recommendation": "CONDITIONAL",
+        "risk_score_max": 0.7,
+        "risk_score_min": 0.55,
+        "rules_fired": ["gst-itc-mismatch", "dpd-threshold", "cibil-cmr-threshold"],
+        "hard_reject": false,
+        "schema_version": "v3"
+      },
+      "coverage_assertions": [
+        "trace_exists",
+        "cam_generated",
+        "exactly_3_rules_fired",
+        "research_cache_used",
+        "officer_notes_count_2",
+        "graph_stats_present",
+        "presentation_safe"
+      ]
+    },
+    {
+      "case_label": "CONDITIONAL_PLUS",
+      "demo_rank": 4,
+      "folder": "conditional_plus",
+      "company_name": "Vertex Auto Forgings Pvt Ltd",
+      "seed_payload": "conditional_plus/seed.json",
+      "documents": [
+        "conditional_plus/facts.md",
+        "conditional_plus/transactions.json"
+      ],
+      "generate_pdf": true,
+      "note_steps": [],
+      "presentation_summary": {
+        "headline": "Operationally stressed borrower with layered distribution flows and moderate graph-model concern, still short of a hard reject.",
+        "callouts": [
+          "Eight structured edges create a layered flow pattern without a deterministic fraud cycle.",
+          "Capacity utilisation at 55% and DPD 45 justify tighter sanction conditions.",
+          "PyG graph score is elevated, but motif alerts stay below hard-reject threshold.",
+          "Collateral adequacy keeps the case in the conditional band."
+        ]
+      },
+      "graph_expectations": {
+        "node_count": 7,
+        "edge_count": 8,
+        "suspicious_cycles": 0,
+        "gnn_label": "clean",
+        "gnn_risk_score_min": 0.45,
+        "gnn_risk_score_max": 1.0,
+        "top_entities": ["Vertex Auto Forgings Pvt Ltd", "Harbor Precision Logistics"]
+      },
+      "expected_artifacts": {
+        "cam_ready": true,
+        "graph_ready": true,
+        "judge_ready": true,
+        "no_placeholder_text": true,
+        "no_warning_text": true
+      },
+      "expected": {
+        "recommendation": "CONDITIONAL",
+        "risk_score_max": 0.62,
+        "risk_score_min": 0.53,
+        "rules_fired": ["dpd-threshold", "cibil-cmr-threshold", "capacity-utilization"],
+        "hard_reject": false,
+        "schema_version": "v3"
+      },
+      "coverage_assertions": [
+        "trace_exists",
+        "cam_generated",
+        "research_cache_used",
+        "graph_stats_present",
+        "presentation_safe"
+      ]
+    },
+    {
+      "case_label": "REJECT",
+      "demo_rank": 5,
+      "folder": "reject",
+      "company_name": "Greenfield Pharma Industries Pvt Ltd",
+      "seed_payload": "reject/seed.json",
+      "documents": [
+        "reject/facts.md",
+        "reject/transactions.json"
+      ],
+      "generate_pdf": true,
+      "note_steps": [],
+      "presentation_summary": {
+        "headline": "Multi-signal fraud-risk case with deterministic circular-trading evidence and a high-confidence graph-model escalation.",
+        "callouts": [
+          "Structured transactions produce a four-entity circular ring plus additional layering edges.",
+          "PyG graph intelligence and deterministic motif detection both converge on high fraud risk.",
+          "CMR 9, DPD 120, cheque dishonours and promoter litigation create stacked hard constraints.",
+          "Case is presentation-ready as the flagship reject walkthrough."
+        ]
+      },
+      "graph_expectations": {
+        "node_count": 6,
+        "edge_count": 8,
+        "suspicious_cycles": 3,
+        "gnn_label": "layered_chain",
+        "gnn_risk_score_min": 0.7,
+        "gnn_risk_score_max": 1.0,
+        "top_entities": ["Greenfield Pharma Industries Pvt Ltd", "Indus Pharma Traders", "Helix Chemicals LLP"]
+      },
+      "expected_artifacts": {
+        "cam_ready": true,
+        "graph_ready": true,
+        "judge_ready": true,
+        "no_placeholder_text": true,
+        "no_warning_text": true
+      },
+      "expected": {
+        "recommendation": "REJECT",
+        "risk_score_max": 1.0,
+        "risk_score_min": 0.8,
+        "rules_fired": [
+          "gst-itc-mismatch",
+          "circular-trading-indicator",
+          "dpd-threshold",
+          "dishonoured-cheques",
+          "cibil-cmr-threshold",
+          "promoter-litigation",
+          "capacity-utilization",
+          "collateral-coverage",
+          "revenue-inflation"
+        ],
+        "hard_reject": true,
+        "schema_version": "v3"
+      },
+      "coverage_assertions": [
+        "trace_exists",
+        "cam_generated",
+        "hard_reject_triggered",
+        "cycle_detected_in_graph",
+        "research_cache_used",
+        "graph_stats_present",
+        "presentation_safe"
+      ]
+    }
+  ]
+}

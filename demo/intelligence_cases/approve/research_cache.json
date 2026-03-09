@@ -1,0 +1,54 @@
+{
+  "company": "Sunrise Textiles Pvt Ltd",
+  "cache_version": "3",
+  "queries_executed": 4,
+  "web_results_found": 6,
+  "findings": [
+    {
+      "summary": "Sunrise Textiles Pvt Ltd is a Surat-based textile manufacturer established in 2001, exporting to EU markets. No adverse regulatory filings found.",
+      "source": "https://www.economictimes.com/surat-textile-exporters-2024",
+      "source_title": "Surat Textile Exporters Show Strong Growth in FY24",
+      "category": "company_profile",
+      "risk_impact": "neutral",
+      "confidence": 0.75,
+      "source_tier": "credible",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Surat-based Sunrise Textiles reported steady export growth to EU markets, maintaining quality certifications.",
+      "timestamp": "2025-11-15T10:30:00Z"
+    },
+    {
+      "summary": "Indian textile sector showing moderate growth with government PLI scheme support. No sector-level red flags.",
+      "source": "https://www.ibef.org/industry/textiles",
+      "source_title": "Indian Textile Industry Report - IBEF",
+      "category": "sector_outlook",
+      "risk_impact": "neutral",
+      "confidence": 0.80,
+      "source_tier": "credible",
+      "corroboration_count": 3,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "India's textile and apparel exports reached $35.4 billion. Government PLI scheme driving capacity expansion in technical textiles.",
+      "timestamp": "2025-10-20T08:15:00Z"
+    },
+    {
+      "summary": "No MCA filings, NCLT cases, or SFIO investigations found against Sunrise Textiles Pvt Ltd or its directors.",
+      "source": "https://www.mca.gov.in",
+      "source_title": "MCA Company Search",
+      "category": "regulatory",
+      "risk_impact": "positive",
+      "confidence": 0.90,
+      "source_tier": "authoritative",
+      "corroboration_count": 1,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "No adverse filings found in MCA records for Sunrise Textiles Pvt Ltd.",
+      "timestamp": "2025-11-14T14:00:00Z"
+    }
+  ],
+  "corroborated_findings": 2,
+  "stale_findings_marked": 0,
+  "research_timestamp": "2025-11-15T10:45:00Z",
+  "elapsed_seconds": 8.2
+}

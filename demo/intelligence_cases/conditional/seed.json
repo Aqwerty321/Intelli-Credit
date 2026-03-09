@@ -1,0 +1,10 @@
+{
+  "company_name": "Apex Steel Components Ltd",
+  "loan_amount": 15000000,
+  "loan_purpose": "Term Loan",
+  "sector": "steel manufacturing",
+  "location": "Pune, Maharashtra",
+  "promoters": [
+    {"name": "Vikram Shah", "din": "00445566", "age": 47}
+  ]
+}

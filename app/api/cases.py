@@ -32,6 +32,11 @@ class CaseCreate(BaseModel):
     sector: str = ""
     location: str = ""
     promoters: list[dict] = []
+    demo_rank: Optional[int] = None
+    demo_case_label: Optional[str] = None
+    presentation_summary: Optional[dict] = None
+    graph_expectations: Optional[dict] = None
+    expected_artifacts: Optional[dict] = None
 
 
 class CaseSummary(BaseModel):
@@ -39,9 +44,14 @@ class CaseSummary(BaseModel):
     company_name: str
     loan_amount: float
     loan_purpose: str
+    sector: str = ""
+    location: str = ""
     status: str
     recommendation: Optional[str] = None
     risk_score: Optional[float] = None
+    demo_rank: Optional[int] = None
+    demo_case_label: Optional[str] = None
+    presentation_summary: Optional[dict] = None
     created_at: str
     updated_at: str
 
@@ -109,6 +119,11 @@ def create_case(payload: CaseCreate):
         "status": "created",
         "recommendation": None,
         "risk_score": None,
+        "demo_rank": payload.demo_rank,
+        "demo_case_label": payload.demo_case_label,
+        "presentation_summary": payload.presentation_summary,
+        "graph_expectations": payload.graph_expectations,
+        "expected_artifacts": payload.expected_artifacts,
         "created_at": now,
         "updated_at": now,
     }
@@ -125,13 +140,13 @@ def get_case(case_id: str):
     case_dir = _case_dir(case_id)
 
     # Attach trace if run
-    trace_files = list(case_dir.glob("*_trace.json"))
+    trace_files = sorted(case_dir.glob("*_trace.json"))
     if trace_files:
         with open(trace_files[-1]) as f:
             meta["trace"] = json.load(f)
 
     # Attach research findings
-    research_files = list(case_dir.glob("*_research.json"))
+    research_files = sorted(case_dir.glob("*_research.json"))
     if research_files:
         with open(research_files[-1]) as f:
             meta["research"] = json.load(f)
@@ -149,7 +164,7 @@ def get_case(case_id: str):
 
     # List uploaded docs
     docs_dir = case_dir / "docs"
-    meta["documents"] = [f.name for f in docs_dir.iterdir() if not f.name.startswith(".")]
+    meta["documents"] = sorted(f.name for f in docs_dir.iterdir() if not f.name.startswith("."))
 
     return meta
 
@@ -177,17 +192,199 @@ async def upload_document(case_id: str, file: UploadFile = File(...)):
     return {"case_id": case_id, "filename": file.filename, "size": len(content)}
 
 
+@router.get("/stats/dashboard")
+def dashboard_stats():
+    """Aggregate portfolio statistics for the dashboard."""
+    cases = []
+    for d in sorted(CASES_DIR.iterdir(), reverse=True):
+        meta_file = d / "meta.json"
+        if not meta_file.exists():
+            continue
+        try:
+            with open(meta_file) as f:
+                cases.append(json.load(f))
+        except Exception:
+            pass
+
+    total = len(cases)
+    completed = [c for c in cases if c.get("status") == "complete"]
+    decision_counts = {"APPROVE": 0, "CONDITIONAL": 0, "REJECT": 0}
+    risk_scores = []
+    sector_counts = {}
+    rule_counts = {}
+    recent_activity = []
+
+    for c in cases:
+        rec = c.get("recommendation")
+        if rec in decision_counts:
+            decision_counts[rec] += 1
+        rs = c.get("risk_score")
+        if rs is not None:
+            risk_scores.append(float(rs))
+        sector = c.get("sector") or "Unknown"
+        sector_counts[sector] = sector_counts.get(sector, 0) + 1
+        recent_activity.append({
+            "case_id": c["case_id"],
+            "company_name": c.get("company_name", ""),
+            "action": c.get("status", "created"),
+            "recommendation": rec,
+            "risk_score": rs,
+            "timestamp": c.get("updated_at") or c.get("created_at", ""),
+        })
+
+    # Load rule firings from traces
+    for c in completed:
+        case_dir = _case_dir(c["case_id"])
+        trace_files = sorted(case_dir.glob("*_trace.json"))
+        if trace_files:
+            try:
+                with open(trace_files[-1]) as f:
+                    trace = json.load(f)
+                for rf in trace.get("rule_firings", []):
+                    slug = rf.get("rule_slug", rf.get("rule_id", "unknown"))
+                    rule_counts[slug] = rule_counts.get(slug, 0) + 1
+            except Exception:
+                pass
+
+    # Risk distribution (5 buckets)
+    risk_distribution = [
+        {"range": "0.0 – 0.2", "count": sum(1 for r in risk_scores if r < 0.2)},
+        {"range": "0.2 – 0.4", "count": sum(1 for r in risk_scores if 0.2 <= r < 0.4)},
+        {"range": "0.4 – 0.6", "count": sum(1 for r in risk_scores if 0.4 <= r < 0.6)},
+        {"range": "0.6 – 0.8", "count": sum(1 for r in risk_scores if 0.6 <= r < 0.8)},
+        {"range": "0.8 – 1.0", "count": sum(1 for r in risk_scores if r >= 0.8)},
+    ]
+
+    avg_risk = sum(risk_scores) / len(risk_scores) if risk_scores else None
+
+    # Recent activity sorted newest first, capped at 20
+    recent_activity.sort(key=lambda x: x["timestamp"], reverse=True)
+    recent_activity = recent_activity[:20]
+
+    return {
+        "total_cases": total,
+        "completed_cases": len(completed),
+        "decision_counts": decision_counts,
+        "avg_risk": round(avg_risk, 4) if avg_risk is not None else None,
+        "risk_distribution": risk_distribution,
+        "sector_breakdown": [{"sector": k, "count": v} for k, v in sorted(sector_counts.items(), key=lambda x: -x[1])],
+        "top_rules_fired": [{"rule": k, "count": v} for k, v in sorted(rule_counts.items(), key=lambda x: -x[1])[:10]],
+        "recent_activity": recent_activity,
+    }
+
+
+@router.get("/compare/bulk")
+def compare_cases(ids: str):
+    """Return summary + trace data for multiple cases for side-by-side comparison.
+
+    Query: ?ids=case_abc,case_def,case_ghi (up to 5)
+    """
+    case_ids = [cid.strip() for cid in ids.split(",") if cid.strip()]
+    if not case_ids:
+        raise HTTPException(400, "Provide at least one case id via ?ids=")
+    if len(case_ids) > 5:
+        raise HTTPException(400, "Compare at most 5 cases at a time")
+
+    results = []
+    for cid in case_ids:
+        meta = _load_meta(cid)
+        case_dir = _case_dir(cid)
+
+        # Attach trace summary
+        trace_summary = {}
+        trace_files = sorted(case_dir.glob("*_trace.json"))
+        if trace_files:
+            try:
+                with open(trace_files[-1]) as f:
+                    trace = json.load(f)
+                decision = trace.get("decision", {})
+                trace_summary = {
+                    "recommendation": decision.get("recommendation"),
+                    "risk_score": decision.get("risk_score"),
+                    "recommended_amount": decision.get("recommended_amount"),
+                    "rules_fired_count": trace.get("rules_fired_count", 0),
+                    "rule_firings": trace.get("rule_firings", []),
+                    "graph_trace": {
+                        "node_count": trace.get("graph_trace", {}).get("node_count", 0),
+                        "edge_count": trace.get("graph_trace", {}).get("edge_count", 0),
+                        "suspicious_cycles": trace.get("graph_trace", {}).get("suspicious_cycles", 0),
+                        "gnn_label": trace.get("graph_trace", {}).get("gnn_label", "clean"),
+                        "gnn_risk_score": trace.get("graph_trace", {}).get("gnn_risk_score", 0),
+                        "fraud_alerts": trace.get("graph_trace", {}).get("fraud_alerts", []),
+                    },
+                    "evidence_judge": trace.get("evidence_judge", {}),
+                    "schema_version": trace.get("schema_version"),
+                }
+            except Exception:
+                pass
+
+        results.append({
+            "case_id": cid,
+            "company_name": meta.get("company_name", ""),
+            "loan_amount": meta.get("loan_amount", 0),
+            "loan_purpose": meta.get("loan_purpose", ""),
+            "sector": meta.get("sector", ""),
+            "status": meta.get("status", ""),
+            "created_at": meta.get("created_at", ""),
+            **trace_summary,
+        })
+
+    return results
+
+
 @router.get("/{case_id}/cam")
 def download_cam(case_id: str):
     """Download the generated CAM markdown file."""
     case_dir = _case_dir(case_id)
-    cam_files = list(case_dir.glob("cam_*.md"))
+    cam_files = sorted(case_dir.glob("cam_*.md"))
     if not cam_files:
         raise HTTPException(404, "CAM not yet generated for this case")
     return FileResponse(
         str(cam_files[-1]),
         media_type="text/markdown",
         filename=f"CAM_{case_id}.md",
+    )
+
+
+@router.get("/{case_id}/cam/pdf")
+def download_cam_pdf(case_id: str):
+    """Generate and download the CAM as a professional PDF."""
+    meta = _load_meta(case_id)
+    case_dir = _case_dir(case_id)
+
+    # Load trace data for the PDF
+    trace = {}
+    trace_files = sorted(case_dir.glob("*_trace.json"))
+    if trace_files:
+        with open(trace_files[-1]) as f:
+            trace = json.load(f)
+
+    decision = trace.get("decision", {})
+    graph_trace = trace.get("graph_trace", {})
+    rule_firings = trace.get("rule_firings", [])
+    evidence_judge = trace.get("evidence_judge", {})
+
+    from services.cam.pdf_generator import generate_cam_pdf
+    pdf_path = case_dir / f"CAM_{case_id}.pdf"
+    generate_cam_pdf(
+        output_path=str(pdf_path),
+        company_name=meta.get("company_name", ""),
+        loan_amount=meta.get("loan_amount", 0),
+        loan_purpose=meta.get("loan_purpose", ""),
+        sector=meta.get("sector", ""),
+        recommendation=decision.get("recommendation", meta.get("recommendation", "PENDING")),
+        risk_score=decision.get("risk_score", meta.get("risk_score", 0)),
+        recommended_amount=decision.get("recommended_amount", 0),
+        rule_firings=rule_firings,
+        graph_trace=graph_trace,
+        evidence_judge=evidence_judge,
+        trace=trace,
+    )
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename=f"CAM_{meta.get('company_name', case_id).replace(' ', '_')}.pdf",
     )
 
 
@@ -339,3 +536,75 @@ def delete_officer_note(case_id: str, note_id: str):
 
     with open(notes_path, "w") as f:
         json.dump(filtered, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Graph Topology & Features
+# ---------------------------------------------------------------------------
+
+def _load_graph_trace(case_id: str) -> dict:
+    """Load graph_trace from the latest trace file for a case."""
+    case_dir = _case_dir(case_id)
+    trace_files = sorted(case_dir.glob("*_trace.json"))
+    if not trace_files:
+        raise HTTPException(404, "No analysis run found for this case — run the pipeline first")
+    with open(trace_files[-1]) as f:
+        trace = json.load(f)
+    graph_trace = trace.get("graph_trace")
+    if not graph_trace:
+        raise HTTPException(404, "No graph data in trace — the pipeline may not have produced graph evidence")
+    return graph_trace
+
+
+@router.get("/{case_id}/graph")
+def get_case_graph(case_id: str):
+    """Return full graph topology (nodes, edges, fraud alerts, GNN inference) for D3 visualization."""
+    _load_meta(case_id)
+    graph_trace = _load_graph_trace(case_id)
+
+    topology = graph_trace.get("graph_topology", {"nodes": [], "edges": []})
+    return {
+        "case_id": case_id,
+        "node_count": graph_trace.get("node_count", 0),
+        "edge_count": graph_trace.get("edge_count", 0),
+        "nodes": topology.get("nodes", []),
+        "edges": topology.get("edges", []),
+        "fraud_alerts": graph_trace.get("fraud_alerts", []),
+        "gnn_label": graph_trace.get("gnn_label", "clean"),
+        "gnn_risk_score": graph_trace.get("gnn_risk_score", 0.0),
+        "class_probabilities": graph_trace.get("class_probabilities", {}),
+        "top_entities": graph_trace.get("top_entities", []),
+        "visual_ready": graph_trace.get("visual_ready", False),
+    }
+
+
+@router.get("/{case_id}/graph/features")
+def get_case_graph_features(case_id: str):
+    """Return raw GNN feature vectors and edge index for frontend ONNX inference."""
+    _load_meta(case_id)
+    graph_trace = _load_graph_trace(case_id)
+
+    transactions = graph_trace.get("graph_transactions", [])
+    if not transactions:
+        return {
+            "case_id": case_id,
+            "node_count": 0,
+            "feature_dim": 7,
+            "node_names": [],
+            "features": [],
+            "edge_index": [[], []],
+        }
+
+    # Re-compute features from stored transactions
+    from services.graph.intelligence import _transactions_to_data, ROLE_TO_VALUE
+    data = _transactions_to_data(transactions)
+    return {
+        "case_id": case_id,
+        "node_count": int(data.x.shape[0]),
+        "feature_dim": int(data.x.shape[1]),
+        "node_names": data.node_names,
+        "features": data.x.tolist(),
+        "edge_index": data.edge_index.tolist(),
+        "edge_weights": data.edge_weight.tolist() if hasattr(data, "edge_weight") else [],
+        "role_to_value": ROLE_TO_VALUE,
+    }

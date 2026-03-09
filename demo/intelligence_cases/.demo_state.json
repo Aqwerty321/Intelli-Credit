@@ -1,0 +1,39 @@
+{
+  "cases": {
+    "APPROVE": {
+      "case_id": "case_dac9d048a159",
+      "recommendation": "APPROVE",
+      "risk_score": 0.3,
+      "rules_fired_count": 0,
+      "schema_version": "v3"
+    },
+    "APPROVE_PLUS": {
+      "case_id": "case_47adf1b4d015",
+      "recommendation": "APPROVE",
+      "risk_score": 0.3,
+      "rules_fired_count": 0,
+      "schema_version": "v3"
+    },
+    "CONDITIONAL": {
+      "case_id": "case_449320f1c395",
+      "recommendation": "CONDITIONAL",
+      "risk_score": 0.6499999999999999,
+      "rules_fired_count": 3,
+      "schema_version": "v3"
+    },
+    "CONDITIONAL_PLUS": {
+      "case_id": "case_4520c344a72f",
+      "recommendation": "CONDITIONAL",
+      "risk_score": 0.55,
+      "rules_fired_count": 3,
+      "schema_version": "v3"
+    },
+    "REJECT": {
+      "case_id": "case_24eea67069d8",
+      "recommendation": "REJECT",
+      "risk_score": 1.0,
+      "rules_fired_count": 9,
+      "schema_version": "v3"
+    }
+  }
+}

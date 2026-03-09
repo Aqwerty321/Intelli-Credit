@@ -1,0 +1,21 @@
+{
+  "nodes": {
+    "Vertex Auto Forgings Pvt Ltd": {"role": "borrower"},
+    "ICICI Term Loan Escrow": {"role": "bank"},
+    "Chennai Alloy Inputs": {"role": "supplier"},
+    "Harbor Precision Logistics": {"role": "distributor"},
+    "South OEM Platform": {"role": "customer"},
+    "Tier2 Parts Integrator": {"role": "buyer"},
+    "Vendor Finance Intermediary": {"role": "related_party"}
+  },
+  "transactions": [
+    {"transaction_id": "vtx_001", "source": "ICICI Term Loan Escrow", "target": "Vertex Auto Forgings Pvt Ltd", "amount": 9000000, "date": "2025-01-04", "type": "BANK_CREDIT"},
+    {"transaction_id": "vtx_002", "source": "Chennai Alloy Inputs", "target": "Vertex Auto Forgings Pvt Ltd", "amount": 4100000, "date": "2025-01-10", "type": "GST_INVOICE"},
+    {"transaction_id": "vtx_003", "source": "Vendor Finance Intermediary", "target": "Vertex Auto Forgings Pvt Ltd", "amount": 1200000, "date": "2025-01-13", "type": "INTERCOMPANY_TRANSFER"},
+    {"transaction_id": "vtx_004", "source": "Vertex Auto Forgings Pvt Ltd", "target": "Harbor Precision Logistics", "amount": 2800000, "date": "2025-01-18", "type": "WAREHOUSE_TRANSFER"},
+    {"transaction_id": "vtx_005", "source": "Harbor Precision Logistics", "target": "South OEM Platform", "amount": 2650000, "date": "2025-01-22", "type": "SALES_RECEIPT"},
+    {"transaction_id": "vtx_006", "source": "Vertex Auto Forgings Pvt Ltd", "target": "Tier2 Parts Integrator", "amount": 2350000, "date": "2025-01-28", "type": "SALES_RECEIPT"},
+    {"transaction_id": "vtx_007", "source": "Chennai Alloy Inputs", "target": "Vertex Auto Forgings Pvt Ltd", "amount": 3850000, "date": "2025-02-08", "type": "GST_INVOICE"},
+    {"transaction_id": "vtx_008", "source": "Harbor Precision Logistics", "target": "South OEM Platform", "amount": 2500000, "date": "2025-02-15", "type": "SALES_RECEIPT"}
+  ]
+}

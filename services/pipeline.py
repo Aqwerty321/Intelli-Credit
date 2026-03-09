@@ -13,6 +13,83 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _stable_doc_id(output_dir: str, file_path: str) -> str:
+    case_scope = Path(output_dir).name
+    stem = Path(file_path).stem.replace(" ", "_").replace("-", "_")
+    return f"{case_scope}_{stem}"
+
+
+def _normalize_transaction_rows(data: object) -> list[dict]:
+    if isinstance(data, dict):
+        rows = data.get("transactions", [])
+        node_meta = data.get("nodes", {})
+    elif isinstance(data, list):
+        rows = data
+        node_meta = {}
+    else:
+        rows = []
+        node_meta = {}
+
+    if isinstance(node_meta, list):
+        node_meta = {
+            item.get("entity_id") or item.get("name"): item
+            for item in node_meta
+            if isinstance(item, dict) and (item.get("entity_id") or item.get("name"))
+        }
+
+    normalized = []
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        source = row.get("source") or row.get("from")
+        target = row.get("target") or row.get("to")
+        if not source or not target:
+            continue
+        source_meta = node_meta.get(source, {})
+        target_meta = node_meta.get(target, {})
+        normalized.append({
+            "transaction_id": row.get("transaction_id") or f"txn_{idx:03d}",
+            "source": source,
+            "target": target,
+            "amount": float(row.get("amount", 0.0) or 0.0),
+            "date": row.get("date"),
+            "type": row.get("type", "GST_INVOICE"),
+            "source_role": row.get("source_role") or source_meta.get("role", "unknown"),
+            "target_role": row.get("target_role") or target_meta.get("role", "unknown"),
+        })
+    return normalized
+
+
+def _transactions_from_graph_builder(graph_builder) -> list[dict]:
+    rows = []
+    for source, target, attrs in graph_builder.graph.edges(data=True):
+        txns = attrs.get("transactions", []) or [{}]
+        for idx, txn in enumerate(txns):
+            rows.append({
+                "transaction_id": f"{source}_{target}_{idx}",
+                "source": source,
+                "target": target,
+                "amount": float(txn.get("amount", attrs.get("weight", 0.0)) or 0.0),
+                "date": txn.get("date"),
+                "type": txn.get("type", "GST_INVOICE"),
+                "source_role": graph_builder.graph.nodes[source].get("role", "unknown"),
+                "target_role": graph_builder.graph.nodes[target].get("role", "unknown"),
+            })
+    return rows
+
+
+def _case_summary(facts: dict) -> str:
+    criminal = int(facts.get("criminal_cases", 0) or 0)
+    civil_high = int(facts.get("civil_high_value_cases", 0) or 0)
+    civil_any = int(facts.get("civil_any_cases", 0) or 0)
+    if not any([criminal, civil_high, civil_any]):
+        return "No active promoter-side litigation identified in uploaded evidence"
+    return (
+        f"{criminal} criminal matter(s), {civil_high} high-value civil matter(s), "
+        f"{civil_any} additional civil matter(s)"
+    )
+
+
 def run_pipeline(
     input_files: list[str],
     company_name: str,
@@ -26,15 +103,25 @@ def run_pipeline(
     location: str = "",
     promoters: list = None,
     officer_notes: list[dict] = None,
+    case_meta: dict = None,
 ):
     """Run the complete credit appraisal pipeline."""
     from services.ingestor.provenance import Provenance, create_provenance
     from services.ingestor.validator import extract_all_fields, extract_domain_facts
-    from services.lakehouse.db import get_connection, init_schema, insert_document, insert_extracted_field, log_provenance
+    from services.lakehouse.db import (
+        get_connection,
+        init_schema,
+        replace_document,
+        insert_extracted_field,
+        insert_transaction,
+        log_provenance,
+    )
     from services.entity_resolution.resolver import EntityResolver
     from services.graph.builder import TransactionGraphBuilder
+    from services.graph.intelligence import infer_demo_graph
     from services.reasoning.rule_engine import RuleEngine
     from services.cam.generator import CAMData, FiveCs, generate_cam_text
+    from services.demo.presentation import build_five_cs_payload, assert_presentation_safe
 
     # Try to import cognitive engine (optional - pipeline works without LLM)
     try:
@@ -61,6 +148,7 @@ def run_pipeline(
     print(f"Company: {company_name}")
     print(f"Loan: ₹{loan_amount:,.0f} for {loan_purpose}")
     print(f"Input files: {len(input_files)}")
+    case_meta = case_meta or {}
 
     # ========================================================================
     # Phase 1: Document Ingestion
@@ -72,9 +160,11 @@ def run_pipeline(
     all_extracted_fields = {}
     all_text = ""
     domain_facts = {}
+    loaded_transactions = []
+    graph_evidence_source = "document_text"
 
     for file_path in input_files:
-        doc_id = Path(file_path).stem
+        doc_id = _stable_doc_id(output_dir, file_path)
         print(f"  Processing: {file_path}")
 
         # Read file content
@@ -86,6 +176,11 @@ def run_pipeline(
             with open(file_path) as f:
                 data = json.load(f)
             text = json.dumps(data, indent=2)
+            transaction_rows = _normalize_transaction_rows(data)
+            if transaction_rows:
+                loaded_transactions.extend(transaction_rows)
+                graph_evidence_source = "transactions_json"
+                print(f"    Transaction rows: {len(transaction_rows)}")
         elif file_path.endswith('.txt') or file_path.endswith('.md'):
             with open(file_path) as f:
                 text = f.read()
@@ -109,9 +204,14 @@ def run_pipeline(
 
         # Store in lakehouse
         try:
-            insert_document(conn, doc_id, file_path,
-                          document_type="corporate_document",
-                          company_name=company_name)
+            replace_document(
+                conn,
+                doc_id,
+                file_path,
+                document_type="corporate_document",
+                company_name=company_name,
+                metadata={"source_kind": "transactions_json" if file_path.endswith(".json") else "document"},
+            )
             for field_type, values in fields.items():
                 for value in values:
                     insert_extracted_field(
@@ -119,6 +219,23 @@ def run_pipeline(
                         field_type=field_type,
                         extraction_method="regex",
                         agent_id="pipeline",
+                    )
+            if file_path.endswith(".json"):
+                for idx, txn in enumerate(_normalize_transaction_rows(data)):
+                    insert_transaction(
+                        conn,
+                        transaction_id=f"{doc_id}_{txn['transaction_id']}_{idx}",
+                        source_entity_id=txn["source"],
+                        target_entity_id=txn["target"],
+                        amount=txn["amount"],
+                        transaction_date=txn.get("date"),
+                        transaction_type=txn.get("type"),
+                        document_id=doc_id,
+                        provenance={
+                            "agent_id": "pipeline",
+                            "source_role": txn.get("source_role", "unknown"),
+                            "target_role": txn.get("target_role", "unknown"),
+                        },
                     )
         except Exception as e:
             print(f"    Warning: DB insert failed: {e}")
@@ -139,37 +256,63 @@ def run_pipeline(
     print("\n--- Phase 3: Graph Analysis ---")
     graph_builder = TransactionGraphBuilder()
 
-    # Wire graph from extracted GSTINs if circular-trading language is present in docs.
-    # Evidence-backed edges only — never fabricate amounts from thin air.
+    # Prefer structured transaction docs for presentation-grade graph evidence.
     gstins = all_extracted_fields.get("gstin", [])
     print(f"  GSTINs found in documents: {gstins}")
 
-    _FRAUD_PHRASES = [
-        "circular transaction", "circular trading", "round trip",
-        "accommodation invoice", "fictitious transaction", "layering",
-    ]
-    _text_lower = all_text.lower()
-    _has_fraud_language = any(p in _text_lower for p in _FRAUD_PHRASES)
-
-    # Explicit cycle flag from text OR fraud language with 3+ distinct GSTINs → build chain
-    cycle_from_text = domain_facts.get("cycle_detected", False)
-    if (cycle_from_text or _has_fraud_language) and len(gstins) >= 3:
-        unique_gstins = list(dict.fromkeys(gstins))   # deduplicate, preserve insertion order
-        invoice_totals = all_extracted_fields.get("invoice_total", [])
-        edge_amount = float(invoice_totals[0]) if invoice_totals else 1_000_000.0
-        for i in range(len(unique_gstins)):
-            src = unique_gstins[i]
-            tgt = unique_gstins[(i + 1) % len(unique_gstins)]
-            if src != tgt:
-                graph_builder.add_transaction(src, tgt, amount=edge_amount, txn_type="INVOICE")
+    if loaded_transactions:
+        for txn in loaded_transactions:
+            graph_builder.add_transaction(
+                txn["source"],
+                txn["target"],
+                amount=txn["amount"],
+                date=txn.get("date"),
+                txn_type=txn.get("type", "GST_INVOICE"),
+                metadata={
+                    txn["source"]: {"role": txn.get("source_role", "unknown")},
+                    txn["target"]: {"role": txn.get("target_role", "unknown")},
+                },
+            )
         print(
-            f"  Graph wired from documents: {graph_builder.get_edge_count()} edges "
-            f"({len(unique_gstins)} GSTINs, cycle_detected={cycle_from_text})"
+            f"  Graph loaded from transaction docs: {len(loaded_transactions)} edges "
+            f"({graph_builder.get_node_count()} nodes)"
         )
+    else:
+        # Wire graph from extracted GSTINs if circular-trading language is present in docs.
+        # Evidence-backed edges only — never fabricate amounts from thin air.
+        _FRAUD_PHRASES = [
+            "circular transaction", "circular trading", "round trip",
+            "accommodation invoice", "fictitious transaction", "layering",
+        ]
+        _text_lower = all_text.lower()
+        _has_fraud_language = any(p in _text_lower for p in _FRAUD_PHRASES)
+
+        # Explicit cycle flag from text OR fraud language with 3+ distinct GSTINs -> build chain
+        cycle_from_text = domain_facts.get("cycle_detected", False)
+        if (cycle_from_text or _has_fraud_language) and len(gstins) >= 3:
+            unique_gstins = list(dict.fromkeys(gstins))
+            invoice_totals = all_extracted_fields.get("invoice_total", [])
+            edge_amount = float(invoice_totals[0]) if invoice_totals else 1_000_000.0
+            for i in range(len(unique_gstins)):
+                src = unique_gstins[i]
+                tgt = unique_gstins[(i + 1) % len(unique_gstins)]
+                if src != tgt:
+                    graph_builder.add_transaction(src, tgt, amount=edge_amount, txn_type="INVOICE")
+            print(
+                f"  Graph wired from documents: {graph_builder.get_edge_count()} edges "
+                f"({len(unique_gstins)} GSTINs, cycle_detected={cycle_from_text})"
+            )
 
     fraud_alerts = graph_builder.run_all_detections()
+    graph_transactions = loaded_transactions or _transactions_from_graph_builder(graph_builder)
+    graph_inference = infer_demo_graph(graph_transactions) if graph_transactions else None
     print(f"  Graph: {graph_builder.get_node_count()} nodes, {graph_builder.get_edge_count()} edges")
     print(f"  Fraud alerts: {len(fraud_alerts)}")
+    if graph_inference:
+        print(
+            f"  Graph intelligence: label={graph_inference.label} "
+            f"risk={graph_inference.gnn_risk_score:.2f}"
+        )
 
     # ========================================================================
     # Phase 4: Neuro-Symbolic Reasoning
@@ -182,6 +325,9 @@ def run_pipeline(
     facts = {
         "company_name": company_name,
         "loan_amount_requested": loan_amount,
+        "promoter_name": (promoters or [{}])[0].get("name", company_name),
+        "capacity_source_type": "borrower fact sheet",
+        "capacity_source_detail": "Structured demo case document",
     }
 
     # Merge real domain facts extracted from documents (CIBIL, GST ITC)
@@ -198,6 +344,9 @@ def run_pipeline(
         "cibil_cmr_rank": 5,
         "capacity_utilization_pct": 70,
         "collateral_value": loan_amount * 1.5,
+        "civil_high_value_cases": 0,
+        "civil_any_cases": 0,
+        "criminal_cases": 0,
         "sector_sentiment_score": sector_sentiment,
         "evidence_count": len(negative_findings),
     }
@@ -211,6 +360,7 @@ def run_pipeline(
                 "reason": "Not found in uploaded documents — conservative default applied",
             })
     facts.update(domain_facts)
+    facts["case_summary"] = domain_facts.get("case_summary") or _case_summary(facts)
     print(f"  Facts assembled: {len(facts)} keys ({len(minimum_risk_policy)} defaults applied)")
     for k, v in sorted(facts.items()):
         if k != "company_name":
@@ -368,32 +518,49 @@ def run_pipeline(
     except Exception as e:
         print(f"  CounterfactualChallenger failed (non-fatal): {e}")
 
+    # Build full topology for D3 visualization
+    graph_topology = graph_builder.to_topology_dict() if graph_builder.get_node_count() > 0 else {"nodes": [], "edges": []}
+
+    graph_trace = {
+        "edges_examined": len(graph_transactions),
+        "edge_count": len(graph_transactions),
+        "node_count": graph_builder.get_node_count(),
+        "suspicious_cycles": sum(1 for a in fraud_alerts if a.alert_type == "cycle"),
+        "fraud_alerts": [
+            {
+                "type": a.alert_type,
+                "severity": a.severity,
+                "entities": a.entities,
+                "risk_score": a.risk_score,
+            }
+            for a in fraud_alerts
+        ],
+        "no_graph_evidence": len(graph_transactions) == 0 and not fraud_alerts,
+        "graph_backend": graph_inference.backend if graph_inference else "networkx",
+        "gnn_risk_score": graph_inference.gnn_risk_score if graph_inference else 0.0,
+        "gnn_ring_risk_score": graph_inference.gnn_ring_risk_score if graph_inference else 0.0,
+        "gnn_label": graph_inference.label if graph_inference else "clean",
+        "top_entities": graph_inference.top_entities if graph_inference else [],
+        "evidence_source": graph_evidence_source,
+        "visual_ready": len(graph_transactions) > 0,
+        "class_probabilities": graph_inference.class_probabilities if graph_inference else {},
+        "graph_topology": graph_topology,
+        "graph_transactions": graph_transactions,
+    }
+
     # Build Five Cs
-    five_cs = FiveCs(
-        character={
-            "promoter_background": "Assessment based on available documents",
-            "cibil_cmr": facts.get("cibil_cmr_rank", "N/A"),
-            "litigation_status": "No significant litigation detected" if not fraud_alerts else "ALERTS DETECTED",
-            "dpd_history": f"Max DPD: {facts.get('max_dpd_last_12m', 'N/A')} days",
-        },
-        capacity={
-            "gst_turnover": f"GSTINs found: {len(gstins)}",
-            "capacity_utilization": f"{facts.get('capacity_utilization_pct', 'N/A')}%",
-            "debt_service_coverage": "To be computed from financial statements",
-        },
-        capital={
-            "net_worth": "Extracted from financial statements",
-            "capital_adequacy": "Assessment pending",
-        },
-        collateral={
-            "collateral_value": f"₹{facts.get('collateral_value', 0):,.0f}",
-            "coverage_ratio": f"{facts.get('collateral_value', 0) / loan_amount:.2f}x" if loan_amount > 0 else "N/A",
-        },
-        conditions={
-            "sector_outlook": "Neutral" if facts.get("sector_sentiment_score", 0) >= 0 else "Negative",
-            "regulatory_environment": "Standard compliance required",
-        },
+    five_cs_payload = build_five_cs_payload(
+        facts=facts,
+        loan_amount=loan_amount,
+        sector=sector,
+        location=location,
+        promoters=promoters or [],
+        research_findings=research_findings or [],
+        graph_trace=graph_trace,
     )
+    five_cs = FiveCs(**five_cs_payload)
+    presentation_summary = case_meta.get("presentation_summary") or {}
+    primary_insights = (primary_insights or []) + presentation_summary.get("callouts", [])
 
     # Build CAM data
     cam_data = CAMData(
@@ -417,6 +584,8 @@ def run_pipeline(
         primary_insights=(primary_insights or []) + (
             [f"LLM Assessment: {llm_assessment.answer[:500]}"] if llm_assessment and llm_assessment.answer else []
         ),
+        executive_summary=presentation_summary.get("headline", ""),
+        presentation_callouts=presentation_summary.get("callouts", []),
     )
 
     # Generate CAM
@@ -448,20 +617,7 @@ def run_pipeline(
             for rf in rule_firings
         ],
         "minimum_risk_policy": minimum_risk_policy,
-        "graph_trace": {
-            "edges_examined": graph_builder.get_edge_count(),
-            "suspicious_cycles": sum(1 for a in fraud_alerts if a.alert_type == "cycle"),
-            "fraud_alerts": [
-                {
-                    "type": a.alert_type,
-                    "severity": a.severity,
-                    "entities": a.entities,
-                    "risk_score": a.risk_score,
-                }
-                for a in fraud_alerts
-            ],
-            "no_graph_evidence": graph_builder.get_edge_count() == 0 and not fraud_alerts,
-        },
+        "graph_trace": graph_trace,
         "llm_trace": llm_trace if llm_trace else None,
         # v3 additions
         "research_plan": search_plan.to_dict() if search_plan else None,
@@ -494,11 +650,40 @@ def run_pipeline(
             "risk_delta": round(risk_score - base_risk, 4),
             "officer_notes_count": len(officer_notes) if officer_notes else 0,
         },
+        "presentation_summary": presentation_summary,
+        "expected_artifacts": case_meta.get("expected_artifacts"),
         "timestamp": timestamp,
     }
+
+    if case_meta.get("expected_artifacts"):
+        completeness_errors = []
+        if not presentation_summary.get("headline"):
+            completeness_errors.append("presentation_summary.headline missing")
+        if not presentation_summary.get("callouts"):
+            completeness_errors.append("presentation_summary.callouts missing")
+        if graph_trace["edge_count"] <= 0:
+            completeness_errors.append("graph_trace.edge_count must be > 0")
+        if graph_trace["gnn_label"] == "clean" and recommendation == "REJECT":
+            completeness_errors.append("reject case requires a non-clean gnn label")
+        if not five_cs_payload["capacity"].get("graph_flow_signal"):
+            completeness_errors.append("capacity.graph_flow_signal missing")
+        if completeness_errors:
+            raise ValueError("Demo completeness validation failed: " + "; ".join(completeness_errors))
+
     with open(trace_path, "w") as f:
         json.dump(trace, f, indent=2)
     print(f"  Trace: {trace_path}")
+
+    with open(cam_path) as f:
+        cam_markdown = f.read()
+    assert_presentation_safe(
+        trace=trace,
+        cam_markdown=cam_markdown,
+        extra_payload={
+            "headline": presentation_summary.get("headline"),
+            "callouts": presentation_summary.get("callouts", []),
+        },
+    )
 
     # Log to provenance
     try:

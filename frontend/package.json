@@ -9,12 +9,16 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "postinstall": "cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm public/models/ && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm public/models/"
   },
   "dependencies": {
+    "d3": "^7.9.0",
+    "onnxruntime-web": "^1.24.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "recharts": "^3.8.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

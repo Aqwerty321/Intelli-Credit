@@ -1,0 +1,20 @@
+{
+  "nodes": {
+    "Greenfield Pharma Industries Pvt Ltd": {"role": "borrower"},
+    "Helix Chemicals LLP": {"role": "related_party"},
+    "Indus Pharma Traders": {"role": "shell"},
+    "Jupiter Chemical Suppliers": {"role": "shell"},
+    "Orbital Brokerage Services": {"role": "related_party"},
+    "State Bank NPA Account": {"role": "bank"}
+  },
+  "transactions": [
+    {"transaction_id": "grn_001", "source": "Greenfield Pharma Industries Pvt Ltd", "target": "Helix Chemicals LLP", "amount": 3800000, "date": "2025-01-05", "type": "GST_INVOICE"},
+    {"transaction_id": "grn_002", "source": "Helix Chemicals LLP", "target": "Indus Pharma Traders", "amount": 3600000, "date": "2025-01-08", "type": "GST_INVOICE"},
+    {"transaction_id": "grn_003", "source": "Indus Pharma Traders", "target": "Jupiter Chemical Suppliers", "amount": 3400000, "date": "2025-01-11", "type": "GST_INVOICE"},
+    {"transaction_id": "grn_004", "source": "Jupiter Chemical Suppliers", "target": "Greenfield Pharma Industries Pvt Ltd", "amount": 4200000, "date": "2025-01-14", "type": "GST_INVOICE"},
+    {"transaction_id": "grn_005", "source": "Greenfield Pharma Industries Pvt Ltd", "target": "Orbital Brokerage Services", "amount": 2100000, "date": "2025-01-17", "type": "INTERCOMPANY_TRANSFER"},
+    {"transaction_id": "grn_006", "source": "Orbital Brokerage Services", "target": "Indus Pharma Traders", "amount": 2050000, "date": "2025-01-19", "type": "INTERCOMPANY_TRANSFER"},
+    {"transaction_id": "grn_007", "source": "State Bank NPA Account", "target": "Greenfield Pharma Industries Pvt Ltd", "amount": 2400000, "date": "2025-01-02", "type": "BANK_CREDIT"},
+    {"transaction_id": "grn_008", "source": "Helix Chemicals LLP", "target": "Orbital Brokerage Services", "amount": 1750000, "date": "2025-01-21", "type": "INTERCOMPANY_TRANSFER"}
+  ]
+}

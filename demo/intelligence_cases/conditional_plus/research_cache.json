@@ -1,0 +1,40 @@
+{
+  "company": "Vertex Auto Forgings Pvt Ltd",
+  "cache_version": "3",
+  "queries_executed": 4,
+  "web_results_found": 7,
+  "findings": [
+    {
+      "summary": "Auto component MSMEs in Chennai face margin pressure from raw-material volatility but order pipelines remain stable.",
+      "source": "https://www.thehindu.com/business/auto-components-outlook",
+      "source_title": "Auto Component Suppliers Navigate Cost Pressures",
+      "category": "sector",
+      "risk_impact": "negative",
+      "confidence": 0.70,
+      "source_tier": "credible",
+      "corroboration_count": 2,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "Tier-2 suppliers reported margin compression despite stable order books from major OEMs.",
+      "timestamp": "2025-11-19T08:20:00Z"
+    },
+    {
+      "summary": "No promoter-level criminal or fraud proceedings found against Vertex Auto Forgings Pvt Ltd in MCA and court index checks.",
+      "source": "https://www.mca.gov.in",
+      "source_title": "MCA Company Search",
+      "category": "regulatory",
+      "risk_impact": "positive",
+      "confidence": 0.90,
+      "source_tier": "authoritative",
+      "corroboration_count": 1,
+      "insufficient_corroboration": false,
+      "stale": false,
+      "raw_snippet": "No adverse MCA fraud flags or strike-off actions located for Vertex Auto Forgings Pvt Ltd.",
+      "timestamp": "2025-11-19T08:40:00Z"
+    }
+  ],
+  "corroborated_findings": 2,
+  "stale_findings_marked": 0,
+  "research_timestamp": "2025-11-19T08:50:00Z",
+  "elapsed_seconds": 7.8
+}

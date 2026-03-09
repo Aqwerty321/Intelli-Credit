@@ -37,12 +37,12 @@ export default function ConfirmModal({
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel() }}
     >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">{title}</h2>
-        <p className="text-sm text-gray-600 mb-6">{body}</p>
+        <h2 className="text-lg font-semibold text-slate-900 mb-2">{title}</h2>
+        <p className="text-sm text-slate-600 mb-6">{body}</p>
         <div className="flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm rounded border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
           >
             Cancel
           </button>

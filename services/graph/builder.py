@@ -137,10 +137,17 @@ class TransactionGraphBuilder:
         """Compute centrality metrics for all nodes."""
         metrics = {}
 
-        pagerank = nx.pagerank(self.graph, weight='weight')
+        try:
+            pagerank = nx.pagerank(self.graph, weight='weight')
+        except Exception:
+            node_count = max(1, self.graph.number_of_nodes())
+            pagerank = {
+                node: (self.graph.in_degree(node) + self.graph.out_degree(node)) / node_count
+                for node in self.graph.nodes()
+            }
         try:
             hubs, authorities = nx.hits(self.graph)
-        except nx.PowerIterationFailedConvergence:
+        except Exception:
             hubs = {n: 0.0 for n in self.graph.nodes()}
             authorities = {n: 0.0 for n in self.graph.nodes()}
 
@@ -202,6 +209,34 @@ class TransactionGraphBuilder:
         alerts.extend(self.detect_star_sellers())
         alerts.extend(self.detect_dense_clusters())
         return alerts
+
+    def to_topology_dict(self) -> dict:
+        """Serialize full graph topology for API/D3 visualization."""
+        centrality = self.compute_centrality()
+        nodes = []
+        for node in self.graph.nodes():
+            attrs = self.graph.nodes[node]
+            metrics = centrality.get(node, {})
+            nodes.append({
+                "id": node,
+                "role": attrs.get("role", attrs.get("entity_type", "unknown")),
+                "in_degree": self.graph.in_degree(node),
+                "out_degree": self.graph.out_degree(node),
+                "pagerank": round(metrics.get("pagerank", 0), 6),
+                "betweenness": round(metrics.get("betweenness_centrality", 0), 6),
+                "hub_score": round(metrics.get("hub_score", 0), 6),
+                "authority_score": round(metrics.get("authority_score", 0), 6),
+            })
+        edges = []
+        for source, target, attrs in self.graph.edges(data=True):
+            edges.append({
+                "source": source,
+                "target": target,
+                "weight": attrs.get("weight", 0),
+                "count": attrs.get("count", 1),
+                "transactions": attrs.get("transactions", []),
+            })
+        return {"nodes": nodes, "edges": edges}
 
     def get_node_count(self) -> int:
         return self.graph.number_of_nodes()

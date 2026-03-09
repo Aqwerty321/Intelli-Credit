@@ -1,0 +1,19 @@
+{
+  "nodes": {
+    "Narmada Agro Mills Pvt Ltd": {"role": "borrower"},
+    "HDFC Working Capital Line": {"role": "bank"},
+    "Malwa Grain Procurement Co": {"role": "supplier"},
+    "Central India Packaging Works": {"role": "supplier"},
+    "Metro Foods Distribution": {"role": "customer"},
+    "Regional Wholesale Network": {"role": "customer"}
+  },
+  "transactions": [
+    {"transaction_id": "nar_001", "source": "HDFC Working Capital Line", "target": "Narmada Agro Mills Pvt Ltd", "amount": 8200000, "date": "2025-01-03", "type": "BANK_CREDIT"},
+    {"transaction_id": "nar_002", "source": "Malwa Grain Procurement Co", "target": "Narmada Agro Mills Pvt Ltd", "amount": 2900000, "date": "2025-01-06", "type": "GST_INVOICE"},
+    {"transaction_id": "nar_003", "source": "Central India Packaging Works", "target": "Narmada Agro Mills Pvt Ltd", "amount": 1300000, "date": "2025-01-11", "type": "GST_INVOICE"},
+    {"transaction_id": "nar_004", "source": "Narmada Agro Mills Pvt Ltd", "target": "Metro Foods Distribution", "amount": 3100000, "date": "2025-01-19", "type": "SALES_RECEIPT"},
+    {"transaction_id": "nar_005", "source": "Narmada Agro Mills Pvt Ltd", "target": "Regional Wholesale Network", "amount": 2750000, "date": "2025-01-25", "type": "SALES_RECEIPT"},
+    {"transaction_id": "nar_006", "source": "Malwa Grain Procurement Co", "target": "Narmada Agro Mills Pvt Ltd", "amount": 2400000, "date": "2025-02-07", "type": "GST_INVOICE"},
+    {"transaction_id": "nar_007", "source": "Narmada Agro Mills Pvt Ltd", "target": "Metro Foods Distribution", "amount": 2950000, "date": "2025-02-15", "type": "SALES_RECEIPT"}
+  ]
+}

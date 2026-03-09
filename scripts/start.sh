@@ -27,6 +27,20 @@ else
     docker compose up -d searxng 2>/dev/null || echo "  (docker compose not available — SearXNG may need manual start)"
 fi
 
+# Copy ORT WASM glue files to public/models/ (gitignored large binaries)
+ORT_SRC="${PROJECT_ROOT}/frontend/node_modules/onnxruntime-web/dist"
+ORT_DST="${PROJECT_ROOT}/frontend/public/models"
+if [[ -d "${ORT_SRC}" ]]; then
+    mkdir -p "${ORT_DST}"
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.mjs       "${ORT_DST}/" 2>/dev/null || true
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.jsep.mjs  "${ORT_DST}/" 2>/dev/null || true
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.asyncify.mjs "${ORT_DST}/" 2>/dev/null || true
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.jspi.mjs  "${ORT_DST}/" 2>/dev/null || true
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.wasm      "${ORT_DST}/" 2>/dev/null || true
+    cp -u "${ORT_SRC}/"ort-wasm-simd-threaded.jsep.wasm "${ORT_DST}/" 2>/dev/null || true
+    echo "✓ ORT WASM runtime files ready"
+fi
+
 # Build frontend if needed
 FRONTEND_DIST="${PROJECT_ROOT}/frontend/dist"
 if [[ ! -d "${FRONTEND_DIST}" ]]; then

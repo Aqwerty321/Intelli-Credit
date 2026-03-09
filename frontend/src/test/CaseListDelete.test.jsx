@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CaseList from '../components/CaseList'
 
 // Mock api.js
 vi.mock('../services/api', () => ({
   deleteCase: vi.fn(),
+  listCases: vi.fn(),
 }))
 
-import { deleteCase } from '../services/api'
+import { deleteCase, listCases } from '../services/api'
 
 const MOCK_CASES = [
   {
@@ -38,12 +39,7 @@ const MOCK_CASES = [
 describe('CaseList delete column', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Mock fetch for the cases list
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => MOCK_CASES,
-    })
+    listCases.mockResolvedValue(MOCK_CASES)
   })
 
   it('renders Actions column header', async () => {
@@ -81,14 +77,14 @@ describe('CaseList delete column', () => {
 
   it('calls deleteCase with the right case_id on confirm', async () => {
     deleteCase.mockResolvedValue(null)
-    // After delete, re-fetch returns empty list
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => MOCK_CASES })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [] })
+    listCases
+      .mockResolvedValueOnce(MOCK_CASES)
+      .mockResolvedValueOnce([])
 
     render(<MemoryRouter><CaseList /></MemoryRouter>)
-    await waitFor(() => screen.getAllByText(/🗑 Delete/))
-    fireEvent.click(screen.getAllByText(/🗑 Delete/)[0])
+    await waitFor(() => screen.getByText('Sunrise Textiles'))
+    const sunriseRow = screen.getByText('Sunrise Textiles').closest('tr')
+    fireEvent.click(within(sunriseRow).getByText(/🗑 Delete/))
     // Confirm modal's confirm button
     const confirmBtn = screen.getByRole('button', { name: 'Delete' })
     fireEvent.click(confirmBtn)

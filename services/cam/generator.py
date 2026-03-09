@@ -51,6 +51,8 @@ class CAMData:
     neuro_symbolic_trace: list[dict] = field(default_factory=list)
     provenance_references: list[dict] = field(default_factory=list)
     primary_insights: list[str] = field(default_factory=list)
+    executive_summary: str = ""
+    presentation_callouts: list[str] = field(default_factory=list)
     generated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -79,6 +81,8 @@ def generate_cam_docx(cam_data: CAMData, output_path: str,
         "risk_premium_bps": cam_data.risk_premium_bps,
         "risk_score": f"{cam_data.risk_score:.2f}",
         "generated_at": cam_data.generated_at,
+        "executive_summary": cam_data.executive_summary,
+        "presentation_callouts": cam_data.presentation_callouts,
 
         # Five Cs
         "character": cam_data.five_cs.character,
@@ -124,12 +128,32 @@ def generate_cam_text(cam_data: CAMData, output_path: str) -> str:
         f"- **Risk Premium:** {cam_data.risk_premium_bps} bps",
         f"- **Risk Score:** {cam_data.risk_score:.2f}",
         f"",
+    ]
+
+    if cam_data.executive_summary:
+        lines.extend([
+            f"## Executive Summary",
+            f"{cam_data.executive_summary}",
+            f"",
+        ])
+
+    if cam_data.presentation_callouts:
+        lines.extend([
+            f"## Key Callouts",
+        ])
+        for callout in cam_data.presentation_callouts:
+            lines.append(f"- {callout}")
+        lines.extend([
+            f"",
+        ])
+
+    lines.extend([
         f"---",
         f"",
         f"## Five Cs Analysis",
         f"",
         f"### Character",
-    ]
+    ])
 
     for key, val in cam_data.five_cs.character.items():
         lines.append(f"- **{key}:** {val}")

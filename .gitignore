@@ -49,3 +49,8 @@ llama.cpp/
 frontend/node_modules/
 frontend/dist/
 
+# ORT WASM runtime binaries — large files copied from node_modules at startup.
+# Run scripts/start.sh or: cp frontend/node_modules/onnxruntime-web/dist/ort-wasm* frontend/public/models/
+frontend/public/models/*.wasm
+frontend/public/models/*.mjs
+

@@ -1,0 +1,19 @@
+{
+  "nodes": {
+    "Apex Steel Components Ltd": {"role": "borrower"},
+    "Axis Bank TL Disbursement": {"role": "bank"},
+    "Pune Alloy Supply Co": {"role": "supplier"},
+    "Shah Logistics and Warehousing": {"role": "related_party"},
+    "Western OEM Assemblies": {"role": "customer"},
+    "Prime Auto Distributor": {"role": "buyer"}
+  },
+  "transactions": [
+    {"transaction_id": "apx_001", "source": "Axis Bank TL Disbursement", "target": "Apex Steel Components Ltd", "amount": 7500000, "date": "2025-01-05", "type": "BANK_CREDIT"},
+    {"transaction_id": "apx_002", "source": "Pune Alloy Supply Co", "target": "Apex Steel Components Ltd", "amount": 3200000, "date": "2025-01-09", "type": "GST_INVOICE"},
+    {"transaction_id": "apx_003", "source": "Shah Logistics and Warehousing", "target": "Apex Steel Components Ltd", "amount": 900000, "date": "2025-01-12", "type": "SERVICE_INVOICE"},
+    {"transaction_id": "apx_004", "source": "Apex Steel Components Ltd", "target": "Western OEM Assemblies", "amount": 3500000, "date": "2025-01-19", "type": "SALES_RECEIPT"},
+    {"transaction_id": "apx_005", "source": "Apex Steel Components Ltd", "target": "Prime Auto Distributor", "amount": 1750000, "date": "2025-01-24", "type": "SALES_RECEIPT"},
+    {"transaction_id": "apx_006", "source": "Pune Alloy Supply Co", "target": "Apex Steel Components Ltd", "amount": 2850000, "date": "2025-02-05", "type": "GST_INVOICE"},
+    {"transaction_id": "apx_007", "source": "Apex Steel Components Ltd", "target": "Western OEM Assemblies", "amount": 3650000, "date": "2025-02-18", "type": "SALES_RECEIPT"}
+  ]
+}

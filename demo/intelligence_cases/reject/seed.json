@@ -1,0 +1,10 @@
+{
+  "company_name": "Greenfield Pharma Industries Pvt Ltd",
+  "loan_amount": 25000000,
+  "loan_purpose": "Equipment Finance",
+  "sector": "pharmaceutical chemicals",
+  "location": "Hyderabad, Telangana",
+  "promoters": [
+    {"name": "Suresh Kumar Reddy", "din": "00778899", "age": 38}
+  ]
+}
