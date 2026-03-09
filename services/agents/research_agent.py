@@ -111,12 +111,14 @@ class ResearchAgent:
     """Autonomous research agent that finds external intelligence about companies."""
 
     def __init__(self, ollama_base: str = None):
-        from services.cognitive.engine import CognitiveEngine, OLLAMA_BASE
+        from services.cognitive.engine import CognitiveEngine, OLLAMA_BASE, LIGHT_MODEL
         self.ollama_base = ollama_base or OLLAMA_BASE
-        self.engine = CognitiveEngine(base_url=self.ollama_base)
+        self.engine = CognitiveEngine(base_url=self.ollama_base, model=LIGHT_MODEL)
         self.llm_available = self.engine.is_alive()
         if not self.llm_available:
             print("[Research] WARNING: Ollama not available — research will be limited")
+        else:
+            print(f"[Research] Using light model ({LIGHT_MODEL}) for analysis")
 
     def generate_search_queries(self, company: dict) -> list[str]:
         """Generate targeted search queries for a company using LLM."""
@@ -282,6 +284,11 @@ class ResearchAgent:
             try:
                 resp = self.engine.generate(prompt, max_tokens=256, temperature=0.1)
                 text = resp.answer if resp.answer else resp.raw_text
+                if "[ERROR" in text:
+                    print(f"  [Research] LLM error for {url[:60]}: {text[:100]}")
+                    return None
+                # Strip markdown fences if present
+                text = re.sub(r'```(?:json)?\s*', '', text).strip()
                 # Extract JSON from response
                 json_match = re.search(r'\{[^{}]+\}', text)
                 if json_match:
