@@ -27,16 +27,14 @@ let _meta = null
 
 async function ensureSession() {
   if (_session) return _session
-  // Lazy-load onnxruntime-web
+  // Lazy-load onnxruntime-web.
+  // With optimizeDeps.exclude in vite.config.js, Vite serves ORT's
+  // .mjs glue and .wasm binaries directly from node_modules — no
+  // need to copy them to public/ or set wasmPaths.
   _ort = await import('onnxruntime-web')
 
-  // Point WASM loader at the static copies in public/models/.
-  // The .mjs glue files AND .wasm binaries must both be present there.
-  _ort.env.wasm.wasmPaths = '/models/'
-
   // Fall back to single-threaded WASM if SharedArrayBuffer is not available
-  // (cross-origin isolation not configured). Prevents the JSEP dynamic-import
-  // failure in environments where COOP/COEP headers are absent.
+  // (cross-origin isolation not configured).
   if (typeof SharedArrayBuffer === 'undefined') {
     _ort.env.wasm.numThreads = 1
   }

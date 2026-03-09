@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Prevent Vite from bundling ORT WASM glue files — they are served as
-  // static assets from public/models/ and must not be processed/transformed.
+  // Exclude onnxruntime-web from dep optimisation so Vite serves its
+  // .mjs glue + .wasm binaries directly from node_modules at dev time.
   optimizeDeps: {
     exclude: ['onnxruntime-web'],
   },
