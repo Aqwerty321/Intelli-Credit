@@ -322,21 +322,19 @@ class ResearchAgent:
         # No fallback — LLM is required for proper sentiment classification
         return None
 
-    def research_company(self, company: dict, use_cache: bool = True,
+    def research_company(self, company: dict, use_cache: bool = False,
                           planned_queries: list[str] = None) -> dict:
         """
         Run full research workflow for a company.
         Returns structured research results with findings.
-        Results are cached to storage/cache/research/ by company name.
 
         Args:
+            use_cache: Ignored (caching disabled). Kept for API compatibility.
             planned_queries: Optional pre-built query list from ResearchRouterAgent.
                              When supplied, step 1 (generate_search_queries) is skipped.
         """
         company_name = company.get("name", "Unknown")
         known_facts = set(company.get("known_facts", []))
-
-        # Cache disabled — always fetch fresh results
 
         print(f"\n  [Research] Researching: {company_name}")
         t0 = time.time()
@@ -420,10 +418,8 @@ class ResearchAgent:
             "web_results_found": len(all_results),
             "findings": unique_findings,
             "corroborated_findings": sum(1 for f in unique_findings if not f.get("insufficient_corroboration")),
-            # stale items are kept in findings but flagged with stale=True and
-            # risk_impact prefixed "stale_"; stale_findings_dropped is a legacy alias.
             "stale_findings_marked": sum(1 for f in unique_findings if f.get("stale")),
-            "stale_findings_dropped": sum(1 for f in unique_findings if f.get("stale")),  # backward-compat alias
+            "stale_findings_dropped": sum(1 for f in unique_findings if f.get("stale")),
             "research_timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 1),
         }
