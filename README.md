@@ -35,8 +35,8 @@ An MSME loan officer today spends **3–5 days per application**: manually readi
 Intelli-Credit replaces that entire workflow with a **9-stage AI pipeline** that streams results in real time:
 
 ```
-📄 Documents In → 🔍 Facts Extracted → 🌐 Web Researched → 📊 Graph Analysed
-     → ⚖️ Rules Fired → 🧮 Risk Scored → 📋 CAM Generated → ✅ Verdict Delivered
+Documents In → Facts Extracted → Web Researched → Graph Analysed
+     → Rules Fired → Risk Scored → CAM Generated → Verdict Delivered
 ```
 
 Every decision comes with a complete audit trail. Every risk basis point is explained. Every claim is sourced.
@@ -59,7 +59,7 @@ Every decision comes with a complete audit trail. Every risk basis point is expl
 
 ## Key Capabilities
 
-### 🔬 Multi-Agent Research Intelligence
+### Multi-Agent Research Intelligence
 Five specialised agents collaborate autonomously — no human in the loop:
 
 | Agent | What It Does |
@@ -70,7 +70,7 @@ Five specialised agents collaborate autonomously — no human in the loop:
 | **ClaimGraph** | Extracts concrete factual claims from evidence, then detects contradictions between sources |
 | **Counterfactual** | Generates what-if scenarios: *"What if DPD were 0 instead of 120?"* — shows the risk delta, making the model's reasoning transparent and challengeable |
 
-### 🧠 Neuro-Symbolic Risk Engine
+### Neuro-Symbolic Risk Engine
 10 domain-expert rules authored in a strict YAML v2 schema — no black boxes:
 
 | Rule | What It Catches | Hard Reject? |
@@ -88,7 +88,7 @@ Five specialised agents collaborate autonomously — no human in the loop:
 
 Every rule fires independently, emits a severity-tagged RuleFiring record, and contributes a precise risk adjustment. **No rule is a black box** — the trace shows exactly which threshold was crossed and by how much.
 
-### 📊 GNN Fraud Detection — In Your Browser
+### GNN Fraud Detection — In Your Browser
 A 2-layer Graph Convolutional Network (PyTorch Geometric) classifies borrower transaction networks into 5 fraud topologies:
 
 | Topology | What It Means |
@@ -101,7 +101,7 @@ A 2-layer Graph Convolutional Network (PyTorch Geometric) classifies borrower tr
 
 The GNN runs server-side via PyTorch Geometric **and** client-side via ONNX Runtime Web — users can interactively edit node features in the **GraphPlayground** and watch the classification update live, with zero backend calls.
 
-### 🎯 Multi-Signal Risk Scoring
+### Multi-Signal Risk Scoring
 The final risk score is not a single model's opinion — it is a **weighted composition of 5 independent signals**:
 
 ```
@@ -118,13 +118,13 @@ Hard-reject override: any rule flagged `hard_reject: true` forces the score to *
 
 **Verdict thresholds:** `< 0.40` APPROVE | `0.40-0.69` CONDITIONAL | `>= 0.70` REJECT
 
-### 📄 Bank-Ready CAM Output
+### Bank-Ready CAM Output
 Generates professional Credit Appraisal Memos in two formats:
 
 - **Markdown** — Executive Summary, Borrower Profile, Financial Analysis, Risk Factors, Evidence Summary, Graph Analysis, Counterfactuals, Recommendation
 - **PDF** (ReportLab) — multi-page layout with colour-coded verdict badge, semi-circle risk gauge, rule-firing waterfall table, graph analysis, evidence quality metrics, counterfactual appendix, and legal disclaimer
 
-### ⚡ Real-Time Streaming
+### Real-Time Streaming
 The full pipeline streams to the frontend via Server-Sent Events. Watch each agent report in as it works:
 
 `search_plan_ready` → `evidence_scored` → `claim_graph_ready` → `counterfactual_ready` → `complete`
@@ -240,9 +240,9 @@ Three pre-built intelligence cases ship with the system, each exercising differe
 
 | Company | Verdict | Risk | Rules Fired | What Makes It Interesting |
 |---------|:-------:|:----:|:-----------:|--------------------------|
-| **Sunrise Textiles Pvt Ltd** | ✅ APPROVE | 0.25 | 0 | Clean case — CMR 3, zero DPD, GST matches, 78% capacity, 1.6x collateral. Demonstrates the system's ability to confidently approve. |
-| **Apex Steel Components Ltd** | ⚠️ CONDITIONAL | 0.65 | 3 | Borderline — CMR 6 triggers +0.10, DPD 45 triggers +0.10, ITC 33% excess triggers +0.15. Shows nuanced multi-rule interaction. |
-| **Greenfield Pharma Industries** | ❌ REJECT | 1.00 | 9 | Maximum risk — CMR 9, DPD 120, circular trading in graph, criminal cases on promoter, 25% capacity. Hard-reject cascade. |
+| **Sunrise Textiles Pvt Ltd** | APPROVE | 0.25 | 0 | Clean case — CMR 3, zero DPD, GST matches, 78% capacity, 1.6x collateral. Demonstrates the system's ability to confidently approve. |
+| **Apex Steel Components Ltd** | CONDITIONAL | 0.65 | 3 | Borderline — CMR 6 triggers +0.10, DPD 45 triggers +0.10, ITC 33% excess triggers +0.15. Shows nuanced multi-rule interaction. |
+| **Greenfield Pharma Industries** | REJECT | 1.00 | 9 | Maximum risk — CMR 9, DPD 120, circular trading in graph, criminal cases on promoter, 25% capacity. Hard-reject cascade. |
 
 Each case comes with parser-friendly documents, structured transactions, and pre-shaped research caches. **No live Ollama or SearXNG needed** to explore the full UI.
 
