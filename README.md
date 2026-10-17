@@ -4,7 +4,7 @@ Intelli-Credit is a local credit appraisal engine for Indian MSME and corporate 
 
 Manual underwriting means reading PDFs, reconciling GST returns against bank statements, searching for news on the promoters, and writing the memo by hand. That takes days and is hard to audit afterwards. Intelli-Credit runs the same steps in one pipeline, streams progress to the browser, and records why every point of risk was added. All model inference runs locally through Ollama, so borrower documents never leave the machine.
 
-The project was built for the "Intelli-Credit" hackathon challenge. The original problem statement and early research notes are in [`problem_statement_and_initial_research/`](problem_statement_and_initial_research/).
+The project was built for a national AI/ML hackathon hosted at IIT Hyderabad. The original problem statement and early research notes are in [`problem_statement_and_initial_research/`](problem_statement_and_initial_research/).
 
 ## Key features
 
@@ -181,3 +181,7 @@ Runtime data (cases, research caches, the DuckDB file) is written to `storage/`,
 - This is a research prototype, not a production lending system. Verdicts on the demo cases are deterministic, but live runs depend on LLM output and current web results.
 - Live research needs both Ollama and SearXNG running. Research caching is currently disabled, so each run fetches fresh results.
 - The vision and presentation documents describe some components (LanceDB, PyReason, Firecrawl, Crocodile) that are planned but not part of the current pipeline.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
